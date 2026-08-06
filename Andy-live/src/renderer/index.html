@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Andy Live - Teleprompter HUD</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app" class="hud-container">
+        <!-- Header Bar -->
+        <header class="hud-header">
+            <div class="brand">
+                <span class="status-dot online"></span>
+                <span class="title">Andy Live HUD</span>
+                <span id="activeRoleBadge" class="badge">Default Profile</span>
+            </div>
+            <div class="actions">
+                <button id="setupBtn" class="btn-sm">⚙️ Setup JD</button>
+                <button id="toggleStealthBtn" class="btn-sm">👁️ Click-Through</button>
+            </div>
+        </header>
+
+        <!-- Setup Modal -->
+        <div id="setupModal" class="modal">
+            <div class="modal-content">
+                <h2>Interview Setup</h2>
+                <label for="jdInput">Paste Target Job Description (JD):</label>
+                <textarea id="jdInput" placeholder="Paste company requirements, stack, responsibilities here..."></textarea>
+                
+                <label for="resumeSelect">Target Resume:</label>
+                <select id="resumeSelect">
+                    <option value="">Auto-Detect Best Match</option>
+                </select>
+
+                <div class="modal-actions">
+                    <button id="saveSetupBtn" class="btn-primary">Initialize AI Teleprompter</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Teleprompter Display Box -->
+        <main class="hud-body">
+            <div id="modelStatus" class="model-status">
+                <span id="providerTag">Groq Cloud (gpt-oss-20b)</span>
+                <span id="latencyTag">~150ms</span>
+            </div>
+            
+            <div id="responseOutput" class="response-output">
+                <p class="placeholder-text">Waiting for interviewer question... Type below or speak.</p>
+            </div>
+        </main>
+
+        <!-- Quick Query Input -->
+        <footer class="hud-footer">
+            <input type="text" id="queryInput" placeholder="Ask question / past question (Press Enter)..." />
+            <select id="forcedProviderSelect" class="provider-picker">
+                <option value="">⚡ Auto Router</option>
+                <option value="groq">Groq (gpt-oss-20b)</option>
+                <option value="gemini_search">Gemini 3.6 (Search)</option>
+                <option value="claude">Claude Sonnet 5</option>
+                <option value="openai">GPT-5.6 Soul</option>
+            </select>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

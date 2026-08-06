@@ -1,0 +1,7 @@
+streamlit
+groq
+chromadb
+pdfplumber
+pytesseract
+Pillow
+python-pptx

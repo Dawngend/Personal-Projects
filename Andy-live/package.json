@@ -1,0 +1,31 @@
+{
+  "name": "andy-live",
+  "version": "1.0.0",
+  "description": "Personalized Multi-AI Interview & Technical Teleprompter Assistant",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "keywords": [
+    "ai",
+    "teleprompter",
+    "interview",
+    "groq",
+    "gemini",
+    "claude",
+    "openai"
+  ],
+  "author": "Dawn Andrei Pamesa",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "@google/genai": "^2.15.0",
+    "dotenv": "^16.4.7",
+    "groq-sdk": "^0.15.0",
+    "openai": "^4.82.0"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0"
+  }
+}
