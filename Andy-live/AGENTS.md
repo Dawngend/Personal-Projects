@@ -42,6 +42,7 @@
 
 ## 🛑 AGY / Codex Execution Rules
 1. **Command Execution:** DO NOT run terminal commands (`npm install`, `npm start`, build scripts) without explicit user greenlight.
-2. **Context Persistence:** Maintain `SKILL.md`, `.env.example`, and full model routing rules up to date.
-3. **Personal Context Sync:** When a meaningful, reusable update is made to Dawn's developer profile, project portfolio, working preferences, or AGY guidance, also update `https://github.com/Dawngend/dawn-personal-context`.
-4. **Workspace Git Sync:** When project changes are ready to share, commit and push/sync `D:\Personal Projects` to `https://github.com/Dawngend/Personal-Projects`. Check the actual Git root first; the directory may be a workspace rather than the repository root.
+2. **Canonical Personal Context:** For any identity-, portfolio-, career-, hardware-, or preference-dependent work, read `D:\Andy_Brain\01_Career_and_Resume\Dawn_Personal_Context.md`. It is the only editable source of truth; `D:\Resumes\agy-profile\PERSONAL_CONTEXT.md` is its Git-synced distribution copy.
+3. **Context Persistence:** Maintain `SKILL.md`, `.env.example`, and full model routing rules up to date.
+4. **Personal Context Sync:** When a meaningful, reusable update is made to Dawn's developer profile, project portfolio, working preferences, or AGY guidance, update the Git distribution copy and sync `https://github.com/Dawngend/dawn-personal-context`.
+5. **Workspace Git Sync:** When project changes are ready to share, commit and push/sync `D:\Personal Projects` to `https://github.com/Dawngend/Personal-Projects`. Check the actual Git root first; the directory may be a workspace rather than the repository root.
