@@ -23,7 +23,7 @@ Location: `D:\Personal Projects\Andy-live`
 
 1. **Dynamic Job Description Ingestion**: Paste company JDs before the interview. Auto-scans all resumes in `D:\Resumes\*.md` + `D:\Resumes\SKILL.md` to format STAR alignment talking points.
 2. **Groq LPU Direct Cloud Integration**: Uses pure Cloud LPU API keys directly from `console.groq.com`.
-3. **Stealth Glassmorphism HUD**: Always-on-top, transparent, click-through overlay interface.
+3. **Glassmorphism HUD**: Always-on-top, transparent overlay interface.
 4. **Global Hotkeys**:
    - `Ctrl + Shift + 1`: ML / AI Engineer Profile Mode
    - `Ctrl + Shift + 2`: Backend Systems Architect Profile Mode
@@ -36,7 +36,6 @@ Location: `D:\Personal Projects\Andy-live`
 1. Start the app, open **Setup JD**, paste the role description, and select a resume or let Andy auto-detect one.
 2. Ask/paste each interviewer question into the footer. The router chooses a model based on intent, or you can override it from the provider menu.
 3. Switch framing immediately with `Ctrl + Shift + 1` (ML/AI), `Ctrl + Shift + 2` (Backend), or `Ctrl + Shift + 3` (Data Science). The active mode updates the system prompt for the current session.
-4. Use **Click-Through** once positioned. Toggle it off before interacting with the HUD again.
 
 ## Configuration and failure behavior
 

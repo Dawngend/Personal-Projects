@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const setupModal = document.getElementById('setupModal');
     const setupBtn = document.getElementById('setupBtn');
     const saveSetupBtn = document.getElementById('saveSetupBtn');
-    const toggleStealthBtn = document.getElementById('toggleStealthBtn');
     const jdInput = document.getElementById('jdInput');
     const resumeSelect = document.getElementById('resumeSelect');
     const queryInput = document.getElementById('queryInput');
@@ -11,8 +10,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const providerTag = document.getElementById('providerTag');
     const latencyTag = document.getElementById('latencyTag');
     const activeRoleBadge = document.getElementById('activeRoleBadge');
-
-    let isStealth = false;
 
     try {
         const resumes = await window.api.getAvailableResumes();
@@ -56,13 +53,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (err) {
             setResponse(err.message || 'Unable to initialize the session.', 'error-text');
         }
-    });
-
-    toggleStealthBtn.addEventListener('click', () => {
-        isStealth = !isStealth;
-        window.api.setIgnoreMouseEvents(isStealth);
-        toggleStealthBtn.textContent = isStealth ? '👁️ Stealth ON' : '👁️ Click-Through';
-        toggleStealthBtn.style.borderColor = isStealth ? '#10b981' : 'rgba(255, 255, 255, 0.15)';
     });
 
     queryInput.addEventListener('keydown', async (e) => {

@@ -80,16 +80,6 @@ ipcMain.handle('send-query', async (event, { query, forcedProvider }) => {
     }
 });
 
-ipcMain.on('set-ignore-mouse-events', (event, ignore) => {
-    if (mainWindow) {
-        if (ignore) {
-            mainWindow.setIgnoreMouseEvents(true, { forward: true });
-        } else {
-            mainWindow.setIgnoreMouseEvents(false);
-        }
-    }
-});
-
 app.whenReady().then(createWindow);
 
 app.on('will-quit', () => {
