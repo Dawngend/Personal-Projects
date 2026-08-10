@@ -16,6 +16,7 @@
                 <span id="activeRoleBadge" class="badge">Default Profile</span>
             </div>
             <div class="actions">
+                <button id="historyBtn" class="btn-sm">📝 History</button>
                 <button id="setupBtn" class="btn-sm">⚙️ Setup JD</button>
             </div>
         </header>
@@ -34,6 +35,22 @@
 
                 <div class="modal-actions">
                     <button id="saveSetupBtn" class="btn-primary">Initialize AI Teleprompter</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="historyModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
+            <div class="modal-content history-modal-content">
+                <div class="history-header">
+                    <h2 id="historyTitle">Session History</h2>
+                    <button id="closeHistoryBtn" class="icon-button" type="button" aria-label="Close session history">×</button>
+                </div>
+                <p id="historyEmpty" class="placeholder-text">Questions and responses from this app session will appear here.</p>
+                <div id="historyList" class="history-list"></div>
+                <div class="modal-actions history-actions">
+                    <button id="clearHistoryBtn" class="btn-sm" type="button">Clear</button>
+                    <button id="copyHistoryBtn" class="btn-sm" type="button">Copy Markdown</button>
+                    <button id="exportHistoryBtn" class="btn-primary" type="button">Export Markdown</button>
                 </div>
             </div>
         </div>

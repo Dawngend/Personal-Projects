@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, dialog, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
@@ -122,6 +122,24 @@ ipcMain.handle('send-image-query', async (event, { query, imagePath, forcedProvi
     } catch (err) {
         return { success: false, error: err.message };
     }
+});
+
+ipcMain.handle('copy-session-history', async (event, markdown) => {
+    if (typeof markdown !== 'string' || !markdown.trim()) throw new Error('There is no session history to copy.');
+    clipboard.writeText(markdown.slice(0, 1_000_000));
+    return { success: true };
+});
+
+ipcMain.handle('export-session-history', async (event, markdown) => {
+    if (typeof markdown !== 'string' || !markdown.trim()) throw new Error('There is no session history to export.');
+    const selection = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export Andy Live session history',
+        defaultPath: `andy-live-session-${new Date().toISOString().slice(0, 10)}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }]
+    });
+    if (selection.canceled || !selection.filePath) return { canceled: true };
+    await fs.promises.writeFile(selection.filePath, markdown.slice(0, 1_000_000), 'utf8');
+    return { success: true, filePath: selection.filePath };
 });
 
 app.whenReady().then(createWindow);

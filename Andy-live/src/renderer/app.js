@@ -1,6 +1,14 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const setupModal = document.getElementById('setupModal');
+    const historyModal = document.getElementById('historyModal');
     const setupBtn = document.getElementById('setupBtn');
+    const historyBtn = document.getElementById('historyBtn');
+    const closeHistoryBtn = document.getElementById('closeHistoryBtn');
+    const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+    const copyHistoryBtn = document.getElementById('copyHistoryBtn');
+    const exportHistoryBtn = document.getElementById('exportHistoryBtn');
+    const historyList = document.getElementById('historyList');
+    const historyEmpty = document.getElementById('historyEmpty');
     const saveSetupBtn = document.getElementById('saveSetupBtn');
     const jdInput = document.getElementById('jdInput');
     const resumeSelect = document.getElementById('resumeSelect');
@@ -15,6 +23,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     const latencyTag = document.getElementById('latencyTag');
     const activeRoleBadge = document.getElementById('activeRoleBadge');
     let selectedImage = null;
+    const sessionHistory = [];
+
+    const createHistoryMarkdown = () => {
+        const lines = ['# Andy Live Session History', ''];
+        sessionHistory.forEach((entry, index) => {
+            lines.push(`## ${index + 1}. ${entry.timestamp}`);
+            lines.push(`- **Mode:** ${entry.role}`);
+            lines.push(`- **Provider:** ${entry.provider} (${entry.model})`);
+            lines.push(`- **Latency:** ${entry.latencyMs}ms`);
+            if (entry.imageName) lines.push(`- **Screenshot:** ${entry.imageName}`);
+            lines.push('', `**Question**`, entry.query, '', `**Response**`, entry.response, '');
+        });
+        return lines.join('\n');
+    };
+
+    const renderHistory = () => {
+        historyList.replaceChildren();
+        historyEmpty.classList.toggle('hidden', sessionHistory.length > 0);
+        sessionHistory.forEach((entry, index) => {
+            const item = document.createElement('article');
+            item.className = 'history-entry';
+            const meta = document.createElement('p');
+            meta.className = 'history-meta';
+            meta.textContent = `${index + 1} · ${entry.timestamp} · ${entry.role} · ${entry.provider} · ${entry.latencyMs}ms${entry.imageName ? ` · ${entry.imageName}` : ''}`;
+            const question = document.createElement('p');
+            question.className = 'history-question';
+            question.textContent = `Q: ${entry.query}`;
+            const response = document.createElement('p');
+            response.className = 'history-response';
+            response.textContent = entry.response;
+            item.append(meta, question, response);
+            historyList.appendChild(item);
+        });
+    };
 
     try {
         const resumes = await window.api.getAvailableResumes();
@@ -30,6 +72,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     setupBtn.addEventListener('click', () => {
         setupModal.classList.remove('hidden');
+    });
+
+    historyBtn.addEventListener('click', () => {
+        renderHistory();
+        historyModal.classList.remove('hidden');
+    });
+
+    closeHistoryBtn.addEventListener('click', () => historyModal.classList.add('hidden'));
+    clearHistoryBtn.addEventListener('click', () => {
+        sessionHistory.length = 0;
+        renderHistory();
+    });
+
+    copyHistoryBtn.addEventListener('click', async () => {
+        if (!sessionHistory.length) return;
+        await window.api.copySessionHistory(createHistoryMarkdown());
+        copyHistoryBtn.textContent = 'Copied';
+        setTimeout(() => { copyHistoryBtn.textContent = 'Copy Markdown'; }, 1500);
+    });
+
+    exportHistoryBtn.addEventListener('click', async () => {
+        if (!sessionHistory.length) return;
+        const result = await window.api.exportSessionHistory(createHistoryMarkdown());
+        if (!result.canceled) exportHistoryBtn.textContent = 'Exported';
+        setTimeout(() => { exportHistoryBtn.textContent = 'Export Markdown'; }, 1500);
     });
 
     attachImageBtn.addEventListener('click', async () => {
@@ -80,6 +147,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             queryInput.value = '';
             const forcedProvider = forcedProviderSelect.value;
+            const imageName = selectedImage?.name || null;
 
             setResponse('Routing query to the AI engine…', 'placeholder-text');
             providerTag.textContent = 'Thinking...';
@@ -99,6 +167,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 providerTag.textContent = `${provider} (${model})`;
                 latencyTag.textContent = `${latencyMs}ms`;
                 responseOutput.textContent = text;
+                sessionHistory.push({
+                    timestamp: new Date().toLocaleTimeString(),
+                    role: activeRoleBadge.textContent,
+                    provider,
+                    model,
+                    latencyMs,
+                    imageName,
+                    query,
+                    response: text
+                });
             } else {
                 providerTag.textContent = 'Error';
                 setResponse(res.error || 'Failed to generate response', 'error-text');
