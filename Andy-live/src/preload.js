@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
     exportSessionHistory: (markdown) => ipcRenderer.invoke('export-session-history', markdown),
     copyText: (text) => ipcRenderer.invoke('copy-text', text),
     generateDebugPrompt: (errorMessage, context) => ipcRenderer.invoke('generate-debug-prompt', { errorMessage, context }),
+    generateDeepPrompt: (question, context) => ipcRenderer.invoke('generate-deep-prompt', { question, context }),
     onModelResponse: (callback) => ipcRenderer.on('model-response', (event, data) => callback(data)),
     onRoleChanged: (callback) => ipcRenderer.on('role-changed', (event, data) => callback(data))
 });

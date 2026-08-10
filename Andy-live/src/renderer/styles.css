@@ -71,6 +71,12 @@ body {
     font-size: 11px;
 }
 
+.fast-badge {
+    color: #fcd34d;
+    border-color: rgba(252, 211, 77, 0.4);
+    background: rgba(245, 158, 11, 0.14);
+}
+
 .btn-sm {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.15);

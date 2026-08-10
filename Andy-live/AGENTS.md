@@ -12,11 +12,11 @@
 | Intent / Question Category | Primary Model ID | Provider API Key | Output Cap | Latency Rationale |
 | :--- | :--- | :--- | :--- | :--- |
 | **1. Fast Verbal Talking Points** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Sub-200ms spoken hints |
-| **2. Fast Reasoning & Analysis** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | High-speed open-weights LPU |
+| **2. Fast Reasoning & Analysis** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Short spoken analysis for live interview pacing |
 | **3. Screen Vision & OCR** | `qwen/qwen3.6-27b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Fast multimodal vision |
 | **4. Fresh-information Requests** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Clearly labels the lack of live web access, then gives durable guidance |
-| **5. Complex System Architecture** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `400 tokens` | Deep architecture & design diagrams |
-| **6. Hard Coding & Algorithms** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `500 tokens` | Strong coding reasoning without a separate API account |
+| **5. System Architecture** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Short architecture talking points for live interviews |
+| **6. Coding & Algorithms** | `qwen/qwen3.6-27b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Fast, concise algorithm and syntax guidance for live interviews |
 
 ---
 

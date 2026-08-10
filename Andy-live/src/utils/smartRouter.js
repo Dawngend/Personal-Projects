@@ -50,7 +50,7 @@ class SmartAIRouter {
             switch (intent) {
                 case 'FAST_TALKING_POINTS':
                 case 'GROQ':
-                    result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150);
+                    result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150, null, 'low');
                     break;
 
                 case 'SEARCH_REQUIRED': {
@@ -58,22 +58,29 @@ class SmartAIRouter {
                         'openai/gpt-oss-20b',
                         `${sysPrompt}\n\nDo not claim live or current web information. State this limit briefly, then give durable guidance based on the user's question.`,
                         userQuery,
-                        150
+                        150,
+                        null,
+                        'low'
                     );
                     result.text = `Note: I do not have live web access, so I cannot verify current information.\n\n${result.text}`;
                     break;
                 }
 
                 case 'SYSTEM_DESIGN':
-                    result = await this.callGroq('openai/gpt-oss-120b', sysPrompt, userQuery, 400);
+                    result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150, null, 'low');
                     break;
 
                 case 'HARD_CODING':
-                    result = await this.callGroq('openai/gpt-oss-120b', sysPrompt, userQuery, 500);
+                    result = await this.callGroq(
+                        'qwen/qwen3.6-27b',
+                        `${sysPrompt}\n\nFast Interview Mode: give the algorithm, complexity, and only a short code skeleton or critical lines. Keep the answer speakable and avoid extended derivations.`,
+                        userQuery,
+                        150
+                    );
                     break;
 
                 case 'DEEP_REASONING':
-                    result = await this.callGroq('openai/gpt-oss-120b', sysPrompt, userQuery, 300);
+                    result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150, null, 'low');
                     break;
 
                 case 'VISION':
@@ -81,7 +88,7 @@ class SmartAIRouter {
                     break;
 
                 default:
-                    result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150);
+                    result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150, null, 'low');
             }
         } catch (err) {
             console.error(`[SmartRouter] Provider error for ${intent}:`, err.message);
@@ -103,7 +110,7 @@ class SmartAIRouter {
 
         const fallbackCalls = [];
         if (failedIntent !== 'FAST_TALKING_POINTS' && failedIntent !== 'GROQ' && this.groq) {
-            fallbackCalls.push(() => this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150));
+            fallbackCalls.push(() => this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150, null, 'low'));
         }
         for (const fallback of fallbackCalls) {
             try {
@@ -164,6 +171,23 @@ class SmartAIRouter {
             'openai/gpt-oss-20b',
             'Create a concise Markdown debugging prompt for Codex or Claude Code. Include observed behavior, relevant context, reproduction steps, expected behavior, and a request for the smallest safe fix. Output only the ready-to-paste prompt. Never include secrets or suggest bypassing safeguards.',
             `Observed error or failure:\n${redact(errorMessage)}\n\nContext:\n${contextText || 'No additional context provided.'}`,
+            350,
+            null,
+            'low'
+        );
+    }
+
+    async createDeepHandoffPrompt(question, context = {}) {
+        const redact = value => String(value || '')
+            .replace(/\b(?:gsk|sk|AIza)[A-Za-z0-9_-]{12,}\b/g, '[REDACTED]')
+            .slice(0, 6000);
+        const contextText = Object.entries(context)
+            .map(([key, value]) => `${key}: ${redact(value)}`)
+            .join('\n');
+        return this.callGroq(
+            'openai/gpt-oss-20b',
+            'Create a complete Markdown handoff prompt for Codex or Claude Code to deeply solve a technical interview question. Include the exact question, supplied context, assumptions to validate, desired rigorous output, trade-offs, and a request for a concise spoken summary. Output only the ready-to-paste prompt. Never include secrets or suggest bypassing safeguards.',
+            `Technical interview question:\n${redact(question)}\n\nContext:\n${contextText || 'No additional context provided.'}`,
             350,
             null,
             'low'

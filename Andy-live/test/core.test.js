@@ -37,6 +37,40 @@ test('fresh-information requests always disclose that live web access is unavail
     assert.match(result.text, /do not have live web access/i);
 });
 
+test('fast interview mode uses the low-latency model for technical routes', async () => {
+    const router = new SmartAIRouter();
+    const calls = [];
+    router.callGroq = async (model, systemPrompt, query, maxTokens, imageInput, reasoningEffort) => {
+        calls.push({ model, maxTokens, reasoningEffort });
+        return { provider: 'Groq Cloud', model, text: 'Fast answer.' };
+    };
+
+    await router.routeQuery('Design a scalable microservices architecture.');
+    await router.routeQuery('Implement a Python function for an LRU cache.');
+    await router.routeQuery('Explain the trade-off between queues and streams.');
+
+    assert.deepEqual(calls, [
+        { model: 'openai/gpt-oss-20b', maxTokens: 150, reasoningEffort: 'low' },
+        { model: 'qwen/qwen3.6-27b', maxTokens: 150, reasoningEffort: undefined },
+        { model: 'openai/gpt-oss-20b', maxTokens: 150, reasoningEffort: 'low' }
+    ]);
+});
+
+test('deep handoff prompts use a sanitized low-reasoning Groq request', async () => {
+    const router = new SmartAIRouter();
+    let received;
+    router.callGroq = async (...args) => {
+        received = args;
+        return { provider: 'Groq Cloud', model: args[0], text: 'Ready-to-paste prompt.' };
+    };
+
+    await router.createDeepHandoffPrompt('Design a RAG service.', { token: 'gsk_abcdefghijklmnopqrstuvwx' });
+
+    assert.equal(received[0], 'openai/gpt-oss-20b');
+    assert.equal(received[5], 'low');
+    assert.match(received[2], /\[REDACTED\]/);
+});
+
 test('personalized prompts include the selected role framing', () => {
     const prompt = buildPersonalizedPrompt('Build reliable data systems.', null, 'backend');
     assert.match(prompt, /backend design, data integrity, observability, scalability, and security/i);

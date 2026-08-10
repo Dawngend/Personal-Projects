@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const historyModal = document.getElementById('historyModal');
     const setupBtn = document.getElementById('setupBtn');
     const debugBtn = document.getElementById('debugBtn');
+    const deepPromptBtn = document.getElementById('deepPromptBtn');
     const historyBtn = document.getElementById('historyBtn');
     const closeHistoryBtn = document.getElementById('closeHistoryBtn');
     const clearHistoryBtn = document.getElementById('clearHistoryBtn');
@@ -25,6 +26,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const activeRoleBadge = document.getElementById('activeRoleBadge');
     let selectedImage = null;
     let latestFailure = null;
+    let latestQuestion = null;
     const sessionHistory = [];
 
     const createHistoryMarkdown = () => {
@@ -152,6 +154,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    deepPromptBtn.addEventListener('click', async () => {
+        if (!latestQuestion) return;
+        deepPromptBtn.disabled = true;
+        deepPromptBtn.textContent = 'Preparing…';
+        try {
+            const result = await window.api.generateDeepPrompt(latestQuestion.query, latestQuestion.context);
+            if (!result.success) throw new Error(result.error || 'Unable to create a deep-thinking prompt.');
+            await window.api.copyText(result.prompt);
+            responseOutput.textContent = result.prompt;
+            providerTag.textContent = `${result.provider} (${result.model})`;
+            latencyTag.textContent = 'Copied for Codex / Claude Code';
+            deepPromptBtn.textContent = '✓ Deep prompt copied';
+        } catch (err) {
+            setResponse(err.message || 'Unable to create a deep-thinking prompt.', 'error-text');
+            deepPromptBtn.textContent = '🧠 Deep prompt';
+        } finally {
+            deepPromptBtn.disabled = false;
+        }
+    });
+
     saveSetupBtn.addEventListener('click', async () => {
         const jdText = jdInput.value.trim();
         const selectedResume = resumeSelect.value;
@@ -204,6 +226,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } else {
                     clearFailure();
                 }
+                latestQuestion = {
+                    query,
+                    context: {
+                        role: activeRoleBadge.textContent,
+                        provider,
+                        model,
+                        currentHudAnswer: text,
+                        screenshot: imageName || 'none'
+                    }
+                };
+                deepPromptBtn.classList.remove('hidden');
                 sessionHistory.push({
                     timestamp: new Date().toLocaleTimeString(),
                     role: activeRoleBadge.textContent,

@@ -157,6 +157,15 @@ ipcMain.handle('generate-debug-prompt', async (event, { errorMessage, context })
     }
 });
 
+ipcMain.handle('generate-deep-prompt', async (event, { question, context }) => {
+    try {
+        const result = await router.createDeepHandoffPrompt(question, context);
+        return { success: true, prompt: result.text, provider: result.provider, model: result.model };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
 app.whenReady().then(createWindow);
 
 app.on('will-quit', () => {

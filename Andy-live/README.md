@@ -11,11 +11,11 @@ Location: `D:\Personal Projects\Andy-live`
 | Intent / Question Category | Primary Model | Provider | Output Cap | Latency Rationale |
 | :--- | :--- | :--- | :--- | :--- |
 | **1. Fast Spoken Talking Points** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Sub-200ms spoken hints |
-| **2. Fast Reasoning & Analysis** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Flagship open-weights LPU speed |
+| **2. Fast Reasoning & Analysis** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Short spoken analysis for live interview pacing |
 | **3. Multimodal / Vision** | `qwen/qwen3.6-27b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Fast screen OCR & vision |
 | **4. Fresh-information Requests** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Clearly labels the lack of live web access, then gives durable guidance |
-| **5. Complex System Architecture**| `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `400 tokens` | Deep architectural specs & diagrams |
-| **6. Hard Coding & Algorithms** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `500 tokens` | Strong coding reasoning without a separate API account |
+| **5. System Architecture**| `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Short architecture talking points for live interviews |
+| **6. Coding & Algorithms** | `qwen/qwen3.6-27b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Fast, concise algorithm and syntax guidance for live interviews |
 
 ---
 
@@ -38,6 +38,7 @@ Location: `D:\Personal Projects\Andy-live`
 3. Switch framing immediately with `Ctrl + Shift + 1` (ML/AI), `Ctrl + Shift + 2` (Backend), or `Ctrl + Shift + 3` (Data Science). The active mode updates the system prompt for the current session.
 4. To analyze a visual, choose **Screenshot**, explicitly select a PNG/JPG/WEBP image (4 MB maximum), type a question, and press Enter. The image is sent only for that request to Groq's vision route; Andy Live does not perform automatic screen capture.
 5. Select **History** to review the current app session. You can clear it, copy it as Markdown, or explicitly export it to a location you choose. History is held only in memory and is discarded when the app closes.
+6. After any successful answer, choose **Deep prompt** to copy a detailed technical handoff for Codex or Claude Code. This keeps the HUD fast while moving long-form reasoning outside the live flow.
 
 ## Configuration and failure behavior
 
