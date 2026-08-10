@@ -90,6 +90,14 @@ class SmartAIRouter {
     }
 
     async tryFallback(failedIntent, sysPrompt, userQuery, originalError) {
+        if (failedIntent === 'VISION') {
+            return {
+                provider: 'Vision unavailable',
+                model: 'qwen/qwen3.6-27b',
+                text: `The screenshot could not be analyzed. Choose a valid PNG, JPG, JPEG, or WEBP image under 4 MB and try again. (${originalError.message})`
+            };
+        }
+
         const fallbackCalls = [];
         if (failedIntent !== 'FAST_TALKING_POINTS' && failedIntent !== 'GROQ' && this.groq) {
             fallbackCalls.push(() => this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150));
@@ -127,14 +135,17 @@ class SmartAIRouter {
                 }
             ]
             : userQuery;
-        const res = await this.groq.chat.completions.create({
+        const request = {
             model: modelName,
             messages: [
                 { role: 'system', content: sysPrompt },
                 { role: 'user', content: userContent }
             ],
             max_tokens: maxTokens
-        });
+        };
+        if (modelName === 'qwen/qwen3.6-27b') request.reasoning_effort = 'none';
+
+        const res = await this.groq.chat.completions.create(request);
         return {
             provider: 'Groq Cloud',
             model: modelName,

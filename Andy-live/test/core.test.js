@@ -20,6 +20,13 @@ test('router rejects an empty query before reaching a provider', async () => {
     await assert.rejects(router.routeQuery('   '), /Enter an interview question/);
 });
 
+test('vision failures do not silently fall back to a text-only answer', async () => {
+    const router = new SmartAIRouter();
+    const result = await router.tryFallback('VISION', '', '', new Error('invalid image data'));
+    assert.equal(result.provider, 'Vision unavailable');
+    assert.match(result.text, /could not be analyzed/i);
+});
+
 test('personalized prompts include the selected role framing', () => {
     const prompt = buildPersonalizedPrompt('Build reliable data systems.', null, 'backend');
     assert.match(prompt, /backend design, data integrity, observability, scalability, and security/i);

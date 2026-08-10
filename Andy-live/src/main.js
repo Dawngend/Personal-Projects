@@ -10,7 +10,7 @@ let mainWindow = null;
 const router = new SmartAIRouter();
 const session = { jdText: '', resumePath: '', role: 'default' };
 const selectedImagePaths = new Set();
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Map([
     ['.png', 'image/png'],
     ['.jpg', 'image/jpeg'],
@@ -113,7 +113,7 @@ ipcMain.handle('send-image-query', async (event, { query, imagePath, forcedProvi
 
         const fileInfo = await fs.promises.stat(imagePath);
         if (!fileInfo.isFile() || fileInfo.size > MAX_IMAGE_BYTES) {
-            throw new Error('Choose an image file smaller than 10 MB.');
+            throw new Error('Choose an image file smaller than 4 MB.');
         }
 
         const data = await fs.promises.readFile(imagePath);
