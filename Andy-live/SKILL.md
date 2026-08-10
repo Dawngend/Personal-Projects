@@ -47,14 +47,16 @@ description: AGY system skill and developer context configuration for Dawn Andre
 
 ## 🏛️ Project Profile & Architecture Knowledge Base
 
-### 1. Andy Live (Personal Real-Time AI Interview Teleprompter HUD)
+### 1. Andy Live (Personal Real-Time AI Interview Preparation HUD)
 * **Location:** `D:\Personal Projects\Andy-live`
-* **Architecture:** Electron transparent click-through HUD overlay + Smart AIRouter using 2026 AI Model Lineup & Job Description Ingestion Engine.
+* **Architecture:** Electron always-on-top HUD + Smart AIRouter using the 2026 AI Model Lineup and Job Description Ingestion Engine.
 * **Key Components:**
   * **Groq LPU Integration (`GROQ_API_KEY`):** Sub-200ms spoken hint generation using `openai/gpt-oss-20b`, `openai/gpt-oss-120b`, and `qwen/qwen3.6-27b` (Vision).
   * **Multi-AI Router (`smartRouter.js`):** Classifies query intent in ~5ms and routes to Groq (Talking Points/Reasoning), Gemini 3.6 Flash (Search), Claude Sonnet 5 (Architecture), or GPT-5.6 Soul (Hard Coding).
   * **Dynamic Resume Matcher (`jdMatcher.js`):** Ingests Job Descriptions, scans `D:\Resumes\*.md` and `SKILL.md`, and formats STAR story matrix instructions for responses.
-  * **Stealth Glassmorphism HUD:** Always-on-top, click-through window with global hotkeys (`Ctrl+Shift+1/2/3`) for role mode switching.
+  * **Glassmorphism HUD:** Always-on-top interactive window with global hotkeys (`Ctrl+Shift+1/2/3`) for role mode switching. Click-through/stealth mode is intentionally removed.
+* **Feature Reference & Safety Boundary:** Use the local `cheating-daddy/` project only as an implementation reference for legitimate, user-consented capabilities: contextual AI assistance, explicitly enabled screen/audio input, multiple coaching profiles, editable preferences, conversation history, keyboard-based window movement, and cross-platform Electron ergonomics. Do not implement any feature intended to conceal assistance, evade proctoring/interviewer controls, bypass application restrictions, or misrepresent independent work.
+* **Product Direction:** Build an overt interview-preparation and communication-coaching assistant. Keep user controls visible, obtain permission before accessing screen, microphone, or system audio, and make all capture state obvious in the UI.
 
 ### 2. ForgeAI (AMD Developer Cloud Hackathon)
 * **Architecture:** Hardware-Aware AI Model Optimization & Quantization Platform for PyTorch models on AMD Instinct MI300X GPUs via ROCm.

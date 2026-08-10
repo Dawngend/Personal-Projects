@@ -43,6 +43,10 @@ Copy `.env.example` to `.env`. At minimum, configure `GROQ_API_KEY` for the defa
 
 If a selected provider is unavailable or errors, Andy attempts a configured alternate provider. It never writes API keys or resume content to disk.
 
+## Product boundary
+
+Andy Live is an overt interview-preparation and communication-coaching tool. Future work may add consent-based contextual input, profiles, history, preferences, and keyboard window controls. It will not include concealment, click-through/stealth behavior, proctoring bypasses, or other evasion features.
+
 ---
 
 ## 🚀 Quick Start
