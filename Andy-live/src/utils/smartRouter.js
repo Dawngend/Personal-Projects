@@ -1,14 +1,12 @@
 const { Groq } = require('groq-sdk');
 const { GoogleGenAI } = require('@google/genai');
 const Anthropic = require('@anthropic-ai/sdk');
-const OpenAI = require('openai');
 
 class SmartAIRouter {
     constructor() {
         this.groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
         this.gemini = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
         this.anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
-        this.openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
         this.systemPrompt = '';
     }
 
@@ -21,7 +19,6 @@ class SmartAIRouter {
             groq: Boolean(this.groq),
             gemini: Boolean(this.gemini),
             anthropic: Boolean(this.anthropic),
-            openai: Boolean(this.openai)
         };
     }
 
@@ -73,8 +70,7 @@ class SmartAIRouter {
                     break;
 
                 case 'HARD_CODING':
-                case 'OPENAI':
-                    result = await this.callOpenAI('gpt-5.6-soul', sysPrompt, userQuery, 500);
+                    result = await this.callGroq('openai/gpt-oss-120b', sysPrompt, userQuery, 500);
                     break;
 
                 case 'DEEP_REASONING':
@@ -105,10 +101,6 @@ class SmartAIRouter {
         if (failedIntent !== 'SEARCH_REQUIRED' && failedIntent !== 'GEMINI_SEARCH' && this.gemini) {
             fallbackCalls.push(() => this.callGeminiFlash('gemini-3.6-flash', sysPrompt, userQuery, 200, false));
         }
-        if (failedIntent !== 'OPENAI' && this.openai) {
-            fallbackCalls.push(() => this.callOpenAI('gpt-5.6-soul', sysPrompt, userQuery, 500));
-        }
-
         for (const fallback of fallbackCalls) {
             try {
                 const result = await fallback();
@@ -175,22 +167,6 @@ class SmartAIRouter {
         };
     }
 
-    async callOpenAI(modelName, sysPrompt, userQuery, maxTokens) {
-        if (!this.openai) throw new Error('OPENAI_API_KEY is not configured in .env');
-        const response = await this.openai.chat.completions.create({
-            model: modelName,
-            messages: [
-                { role: 'system', content: sysPrompt },
-                { role: 'user', content: userQuery }
-            ],
-            max_tokens: maxTokens
-        });
-        return {
-            provider: 'OpenAI',
-            model: modelName,
-            text: response.choices?.[0]?.message?.content || 'The provider returned an empty response.'
-        };
-    }
 }
 
 module.exports = SmartAIRouter;

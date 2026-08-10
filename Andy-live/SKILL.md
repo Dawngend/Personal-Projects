@@ -36,7 +36,7 @@ description: AGY system skill and developer context configuration for Dawn Andre
 
 ### AI, Machine Learning & Data Infrastructure
 * **ML & Deep Learning:** PyTorch, scikit-learn, pandas, Optuna (Pareto Frontier multi-objective search), ROCm Workloads, Model Quantization (INT8/FP8/INT4), Knowledge Distillation, Model Pruning
-* **LLM Orchestration & RAG:** Dual-API Pipelines, Groq Cloud LPU (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.6-27b`), Google Gemini (`gemini-3.6-flash`), Anthropic Claude (`claude-sonnet-5`), OpenAI (`gpt-5.6-soul`), SentenceTransformers, ChromaDB
+* **LLM Orchestration & RAG:** Dual-API Pipelines, Groq Cloud LPU (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.6-27b`), Google Gemini (`gemini-3.6-flash`), Anthropic Claude (`claude-sonnet-5`), SentenceTransformers, ChromaDB
 * **Data Processing & OCR:** pdfplumber, Pytesseract OCR with fallback caching strategies, Geospatial Data Ingestion
 
 ### Cloud, DevOps & Databases

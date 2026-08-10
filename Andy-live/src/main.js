@@ -71,7 +71,7 @@ ipcMain.handle('setup-session', async (event, { jdText, resumePath }) => {
 
 ipcMain.handle('send-query', async (event, { query, forcedProvider }) => {
     try {
-        const allowedProviders = new Set(['', 'groq', 'gemini_search', 'claude', 'openai']);
+        const allowedProviders = new Set(['', 'groq', 'gemini_search', 'claude']);
         const provider = allowedProviders.has(forcedProvider) ? forcedProvider : '';
         const result = await router.routeQuery(String(query || '').slice(0, 12000), null, null, provider);
         return { success: true, result };
