@@ -16,6 +16,15 @@ class SmartAIRouter {
         this.systemPrompt = prompt;
     }
 
+    getConfiguredProviders() {
+        return {
+            groq: Boolean(this.groq),
+            gemini: Boolean(this.gemini),
+            anthropic: Boolean(this.anthropic),
+            openai: Boolean(this.openai)
+        };
+    }
+
     /**
      * Intent Classifier (~5ms heuristic execution time)
      */
@@ -36,6 +45,10 @@ class SmartAIRouter {
     }
 
     async routeQuery(userQuery, customPrompt = null, imageBuffer = null, forcedProvider = null) {
+        if (typeof userQuery !== 'string' || !userQuery.trim()) {
+            throw new Error('Enter an interview question before sending.');
+        }
+
         const sysPrompt = customPrompt || this.systemPrompt || 'Answer in 1-3 bullet points.';
         const intent = forcedProvider ? forcedProvider.toUpperCase() : this.classifyIntent(userQuery, !!imageBuffer);
         
@@ -76,18 +89,41 @@ class SmartAIRouter {
                     result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150);
             }
         } catch (err) {
-            console.error(`[SmartRouter] Provider error for ${intent}, falling back:`, err.message);
-            if (this.groq) {
-                result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150);
-            } else if (this.gemini) {
-                result = await this.callGeminiFlash('gemini-3.6-flash', sysPrompt, userQuery, 200, false);
-            } else {
-                result = { provider: 'System Error', model: 'None', text: `Error processing query: ${err.message}`, latencyMs: 0 };
-            }
+            console.error(`[SmartRouter] Provider error for ${intent}:`, err.message);
+            result = await this.tryFallback(intent, sysPrompt, userQuery, err);
         }
 
         result.latencyMs = Date.now() - startTime;
         return result;
+    }
+
+    async tryFallback(failedIntent, sysPrompt, userQuery, originalError) {
+        const fallbackCalls = [];
+        if (failedIntent !== 'FAST_TALKING_POINTS' && failedIntent !== 'GROQ' && this.groq) {
+            fallbackCalls.push(() => this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150));
+        }
+        if (failedIntent !== 'SEARCH_REQUIRED' && failedIntent !== 'GEMINI_SEARCH' && this.gemini) {
+            fallbackCalls.push(() => this.callGeminiFlash('gemini-3.6-flash', sysPrompt, userQuery, 200, false));
+        }
+        if (failedIntent !== 'OPENAI' && this.openai) {
+            fallbackCalls.push(() => this.callOpenAI('gpt-5.6-soul', sysPrompt, userQuery, 500));
+        }
+
+        for (const fallback of fallbackCalls) {
+            try {
+                const result = await fallback();
+                result.provider += ' (fallback)';
+                return result;
+            } catch (fallbackError) {
+                console.error('[SmartRouter] Fallback provider error:', fallbackError.message);
+            }
+        }
+
+        return {
+            provider: 'Configuration required',
+            model: 'No available provider',
+            text: `Unable to reach an AI provider. Configure the required API key in .env, then restart Andy Live. (${originalError.message})`
+        };
     }
 
     async callGroq(modelName, sysPrompt, userQuery, maxTokens) {
@@ -103,7 +139,7 @@ class SmartAIRouter {
         return {
             provider: 'Groq Cloud',
             model: modelName,
-            text: res.choices[0].message.content
+            text: res.choices?.[0]?.message?.content || 'The provider returned an empty response.'
         };
     }
 
@@ -120,7 +156,7 @@ class SmartAIRouter {
         return {
             provider: 'Google Gemini',
             model: modelName + (enableSearch ? ' (Search)' : ''),
-            text: response.text
+            text: response.text || 'The provider returned an empty response.'
         };
     }
 
@@ -135,7 +171,7 @@ class SmartAIRouter {
         return {
             provider: 'Anthropic Claude',
             model: modelName,
-            text: response.content[0].text
+            text: response.content?.find(block => block.type === 'text')?.text || 'The provider returned an empty response.'
         };
     }
 
@@ -152,7 +188,7 @@ class SmartAIRouter {
         return {
             provider: 'OpenAI',
             model: modelName,
-            text: response.choices[0].message.content
+            text: response.choices?.[0]?.message?.content || 'The provider returned an empty response.'
         };
     }
 }

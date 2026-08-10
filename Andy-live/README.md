@@ -31,6 +31,21 @@ Location: `D:\Personal Projects\Andy-live`
 
 ---
 
+## Interview flow
+
+1. Start the app, open **Setup JD**, paste the role description, and select a resume or let Andy auto-detect one.
+2. Ask/paste each interviewer question into the footer. The router chooses a model based on intent, or you can override it from the provider menu.
+3. Switch framing immediately with `Ctrl + Shift + 1` (ML/AI), `Ctrl + Shift + 2` (Backend), or `Ctrl + Shift + 3` (Data Science). The active mode updates the system prompt for the current session.
+4. Use **Click-Through** once positioned. Toggle it off before interacting with the HUD again.
+
+## Configuration and failure behavior
+
+Copy `.env.example` to `.env`. At minimum, configure `GROQ_API_KEY` for the default fast-answer route. The remaining keys enable their respective specialized routes.
+
+If a selected provider is unavailable or errors, Andy attempts a configured alternate provider. It never writes API keys or resume content to disk.
+
+---
+
 ## 🚀 Quick Start
 
 1. **Install Dependencies**:

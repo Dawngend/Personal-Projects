@@ -63,7 +63,7 @@ function autoDetectResume(jdText) {
 /**
  * Builds the personalized system prompt integrating Global SKILL.md + Selected Target Resume + Job Description
  */
-function buildPersonalizedPrompt(jdText, selectedResumePath = null) {
+function buildPersonalizedPrompt(jdText, selectedResumePath = null, role = 'default') {
     let globalSkill = '';
     const skillPath = path.join(RESUMES_DIR, 'SKILL.md');
     if (fs.existsSync(skillPath)) {
@@ -82,6 +82,13 @@ function buildPersonalizedPrompt(jdText, selectedResumePath = null) {
         targetResumeContent = fs.readFileSync(chosenResumeFile, 'utf8');
     }
 
+    const roleInstruction = {
+        mle: 'Prioritize ML systems, model evaluation, MLOps, and pragmatic AI trade-offs.',
+        backend: 'Prioritize reliable backend design, data integrity, observability, scalability, and security.',
+        ds: 'Prioritize data quality, experimentation, statistical reasoning, and measurable business impact.',
+        default: 'Adapt to the interviewer’s domain while remaining technically precise.'
+    }[role] || 'Adapt to the interviewer’s domain while remaining technically precise.';
+
     return `
 You are Dawn Andrei Pamesa's discreet real-time interview & technical teleprompter assistant.
 Respond ONLY in 1-3 bullet points or clean Markdown code blocks that Dawn can directly speak or use live.
@@ -99,6 +106,7 @@ ${jdText}
 1. Frame answers using Dawn's real verified metrics & project names (ForgeAI, BANGON, Sophy, Andy's Hub, Dzuka Agri, FlyRank AI).
 2. Directly solve or answer the interviewer's question in 1–3 short spoken bullet points.
 3. Be direct, authoritative, and tailored strictly to the Job Description requirements.
+4. Active interview mode: ${roleInstruction}
 `.trim();
 }
 

@@ -30,6 +30,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupModal.classList.remove('hidden');
     });
 
+    const setResponse = (message, className = '') => {
+        responseOutput.replaceChildren();
+        const paragraph = document.createElement('p');
+        paragraph.textContent = message;
+        if (className) paragraph.className = className;
+        responseOutput.appendChild(paragraph);
+    };
+
     saveSetupBtn.addEventListener('click', async () => {
         const jdText = jdInput.value.trim();
         const selectedResume = resumeSelect.value;
@@ -38,10 +46,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        const res = await window.api.setupSession(jdText, selectedResume);
-        if (res.success) {
-            setupModal.classList.add('hidden');
-            responseOutput.innerHTML = `<p style="color: #10b981;">✅ AI Teleprompter Initialized with Job Description & Target Resume STAR Matrix!</p>`;
+        try {
+            const res = await window.api.setupSession(jdText, selectedResume);
+            if (res.success) {
+                setupModal.classList.add('hidden');
+                const configured = Object.values(res.configuredProviders || {}).filter(Boolean).length;
+                setResponse(`AI teleprompter initialized. ${configured} provider${configured === 1 ? '' : 's'} configured.`, 'success-text');
+            }
+        } catch (err) {
+            setResponse(err.message || 'Unable to initialize the session.', 'error-text');
         }
     });
 
@@ -60,7 +73,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             queryInput.value = '';
             const forcedProvider = forcedProviderSelect.value;
 
-            responseOutput.innerHTML = `<p class="placeholder-text">⚡ Routing query to 2026 AI Engine...</p>`;
+            setResponse('Routing query to the AI engine…', 'placeholder-text');
             providerTag.textContent = 'Thinking...';
             latencyTag.textContent = '';
 
@@ -70,15 +83,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const { provider, model, text, latencyMs } = res.result;
                 providerTag.textContent = `${provider} (${model})`;
                 latencyTag.textContent = `${latencyMs}ms`;
-                responseOutput.innerText = text;
+                responseOutput.textContent = text;
             } else {
                 providerTag.textContent = 'Error';
-                responseOutput.innerHTML = `<p style="color: #ef4444;">❌ ${res.error || 'Failed to generate response'}</p>`;
+                setResponse(res.error || 'Failed to generate response', 'error-text');
             }
         }
     });
 
     window.api.onRoleChanged(({ role, name }) => {
         activeRoleBadge.textContent = name;
+        setResponse(`${name} enabled. ${role === 'mle' ? 'Focus: ML systems and MLOps.' : role === 'backend' ? 'Focus: reliability and scalable systems.' : 'Focus: data, experimentation, and impact.'}`, 'success-text');
     });
 });

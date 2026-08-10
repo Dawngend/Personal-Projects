@@ -7,6 +7,19 @@ const { getAvailableResumes, buildPersonalizedPrompt } = require('./utils/jdMatc
 
 let mainWindow = null;
 const router = new SmartAIRouter();
+const session = { jdText: '', resumePath: '', role: 'default' };
+
+const ROLE_MODES = {
+    mle: 'ML / AI Engineer Mode',
+    backend: 'Backend Systems Architect Mode',
+    ds: 'Data Scientist Mode'
+};
+
+function refreshSessionPrompt() {
+    if (session.jdText) {
+        router.setSystemPrompt(buildPersonalizedPrompt(session.jdText, session.resumePath, session.role));
+    }
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -32,17 +45,15 @@ function createWindow() {
 }
 
 function registerGlobalHotkeys() {
-    globalShortcut.register('CommandOrControl+Shift+1', () => {
-        if (mainWindow) mainWindow.webContents.send('role-changed', { role: 'mle', name: 'ML / AI Engineer Mode' });
-    });
-
-    globalShortcut.register('CommandOrControl+Shift+2', () => {
-        if (mainWindow) mainWindow.webContents.send('role-changed', { role: 'backend', name: 'Backend Systems Architect Mode' });
-    });
-
-    globalShortcut.register('CommandOrControl+Shift+3', () => {
-        if (mainWindow) mainWindow.webContents.send('role-changed', { role: 'ds', name: 'Data Scientist Mode' });
-    });
+    Object.entries({ 'CommandOrControl+Shift+1': 'mle', 'CommandOrControl+Shift+2': 'backend', 'CommandOrControl+Shift+3': 'ds' })
+        .forEach(([accelerator, role]) => {
+            const registered = globalShortcut.register(accelerator, () => {
+                session.role = role;
+                refreshSessionPrompt();
+                mainWindow?.webContents.send('role-changed', { role, name: ROLE_MODES[role] });
+            });
+            if (!registered) console.warn(`[Andy Live] Unable to register global shortcut: ${accelerator}`);
+        });
 }
 
 ipcMain.handle('get-resumes', async () => {
@@ -50,14 +61,19 @@ ipcMain.handle('get-resumes', async () => {
 });
 
 ipcMain.handle('setup-session', async (event, { jdText, resumePath }) => {
-    const prompt = buildPersonalizedPrompt(jdText, resumePath);
+    if (typeof jdText !== 'string' || !jdText.trim()) throw new Error('A job description is required.');
+    session.jdText = jdText.trim().slice(0, 30000);
+    session.resumePath = typeof resumePath === 'string' ? resumePath : '';
+    const prompt = buildPersonalizedPrompt(session.jdText, session.resumePath, session.role);
     router.setSystemPrompt(prompt);
-    return { success: true, promptSnippet: prompt.substring(0, 300) + '...' };
+    return { success: true, promptSnippet: prompt.substring(0, 300) + '...', configuredProviders: router.getConfiguredProviders() };
 });
 
 ipcMain.handle('send-query', async (event, { query, forcedProvider }) => {
     try {
-        const result = await router.routeQuery(query, null, null, forcedProvider);
+        const allowedProviders = new Set(['', 'groq', 'gemini_search', 'claude', 'openai']);
+        const provider = allowedProviders.has(forcedProvider) ? forcedProvider : '';
+        const result = await router.routeQuery(String(query || '').slice(0, 12000), null, null, provider);
         return { success: true, result };
     } catch (err) {
         return { success: false, error: err.message };

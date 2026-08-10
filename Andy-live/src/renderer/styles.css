@@ -113,6 +113,9 @@ body {
     font-style: italic;
 }
 
+.success-text { color: #6ee7b7; }
+.error-text { color: #fca5a5; }
+
 .hud-footer {
     padding: 10px 14px;
     background: rgba(15, 23, 42, 0.95);
