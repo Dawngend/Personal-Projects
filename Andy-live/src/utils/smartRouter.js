@@ -53,14 +53,16 @@ class SmartAIRouter {
                     result = await this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150);
                     break;
 
-                case 'SEARCH_REQUIRED':
+                case 'SEARCH_REQUIRED': {
                     result = await this.callGroq(
-                        'openai/gpt-oss-120b',
+                        'openai/gpt-oss-20b',
                         `${sysPrompt}\n\nDo not claim live or current web information. State this limit briefly, then give durable guidance based on the user's question.`,
                         userQuery,
-                        300
+                        150
                     );
+                    result.text = `Note: I do not have live web access, so I cannot verify current information.\n\n${result.text}`;
                     break;
+                }
 
                 case 'SYSTEM_DESIGN':
                     result = await this.callGroq('openai/gpt-oss-120b', sysPrompt, userQuery, 400);

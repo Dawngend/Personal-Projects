@@ -27,6 +27,16 @@ test('vision failures do not silently fall back to a text-only answer', async ()
     assert.match(result.text, /could not be analyzed/i);
 });
 
+test('fresh-information requests always disclose that live web access is unavailable', async () => {
+    const router = new SmartAIRouter();
+    router.callGroq = async (model) => ({ provider: 'Groq Cloud', model, text: 'Durable guidance.' });
+
+    const result = await router.routeQuery('What are the latest market trends?');
+
+    assert.equal(result.model, 'openai/gpt-oss-20b');
+    assert.match(result.text, /do not have live web access/i);
+});
+
 test('personalized prompts include the selected role framing', () => {
     const prompt = buildPersonalizedPrompt('Build reliable data systems.', null, 'backend');
     assert.match(prompt, /backend design, data integrity, observability, scalability, and security/i);
