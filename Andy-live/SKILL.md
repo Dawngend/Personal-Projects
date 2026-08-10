@@ -36,7 +36,7 @@ description: AGY system skill and developer context configuration for Dawn Andre
 
 ### AI, Machine Learning & Data Infrastructure
 * **ML & Deep Learning:** PyTorch, scikit-learn, pandas, Optuna (Pareto Frontier multi-objective search), ROCm Workloads, Model Quantization (INT8/FP8/INT4), Knowledge Distillation, Model Pruning
-* **LLM Orchestration & RAG:** Dual-API Pipelines, Groq Cloud LPU (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.6-27b`), Google Gemini (`gemini-3.6-flash`), Anthropic Claude (`claude-sonnet-5`), SentenceTransformers, ChromaDB
+* **LLM Orchestration & RAG:** Dual-API Pipelines, Groq Cloud LPU (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`, `qwen/qwen3.6-27b`), Google Gemini (`gemini-3.6-flash`), SentenceTransformers, ChromaDB
 * **Data Processing & OCR:** pdfplumber, Pytesseract OCR with fallback caching strategies, Geospatial Data Ingestion
 
 ### Cloud, DevOps & Databases
@@ -57,6 +57,7 @@ description: AGY system skill and developer context configuration for Dawn Andre
   * **Glassmorphism HUD:** Always-on-top interactive window with global hotkeys (`Ctrl+Shift+1/2/3`) for role mode switching. Click-through/stealth mode is intentionally removed.
 * **Feature Reference & Safety Boundary:** Use the local `cheating-daddy/` project only as an implementation reference for legitimate, user-consented capabilities: contextual AI assistance, explicitly enabled screen/audio input, multiple coaching profiles, editable preferences, conversation history, keyboard-based window movement, and cross-platform Electron ergonomics. Do not implement any feature intended to conceal assistance, evade proctoring/interviewer controls, bypass application restrictions, or misrepresent independent work.
 * **Product Direction:** Build an overt interview-preparation and communication-coaching assistant. Keep user controls visible, obtain permission before accessing screen, microphone, or system audio, and make all capture state obvious in the UI.
+* **Development Tooling:** Codex and Claude Code are available for assisted software development. They are separate from Andy Live’s runtime providers and must not be represented as application API credentials. Screenshots may be deliberately supplied for future visual analysis only with clear user action and visible capture state.
 
 ### 2. ForgeAI (AMD Developer Cloud Hackathon)
 * **Architecture:** Hardware-Aware AI Model Optimization & Quantization Platform for PyTorch models on AMD Instinct MI300X GPUs via ROCm.

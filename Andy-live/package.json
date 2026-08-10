@@ -20,7 +20,6 @@
   "author": "Dawn Andrei Pamesa",
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.36.0",
     "@google/genai": "^2.15.0",
     "dotenv": "^16.4.7",
     "groq-sdk": "^0.15.0"

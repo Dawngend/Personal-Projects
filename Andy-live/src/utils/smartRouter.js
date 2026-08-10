@@ -1,12 +1,10 @@
 const { Groq } = require('groq-sdk');
 const { GoogleGenAI } = require('@google/genai');
-const Anthropic = require('@anthropic-ai/sdk');
 
 class SmartAIRouter {
     constructor() {
         this.groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
         this.gemini = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
-        this.anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }) : null;
         this.systemPrompt = '';
     }
 
@@ -18,7 +16,6 @@ class SmartAIRouter {
         return {
             groq: Boolean(this.groq),
             gemini: Boolean(this.gemini),
-            anthropic: Boolean(this.anthropic),
         };
     }
 
@@ -65,8 +62,7 @@ class SmartAIRouter {
                     break;
 
                 case 'SYSTEM_DESIGN':
-                case 'CLAUDE':
-                    result = await this.callClaude('claude-sonnet-5', sysPrompt, userQuery, 400);
+                    result = await this.callGroq('openai/gpt-oss-120b', sysPrompt, userQuery, 400);
                     break;
 
                 case 'HARD_CODING':
@@ -149,21 +145,6 @@ class SmartAIRouter {
             provider: 'Google Gemini',
             model: modelName + (enableSearch ? ' (Search)' : ''),
             text: response.text || 'The provider returned an empty response.'
-        };
-    }
-
-    async callClaude(modelName, sysPrompt, userQuery, maxTokens) {
-        if (!this.anthropic) throw new Error('ANTHROPIC_API_KEY is not configured in .env');
-        const response = await this.anthropic.messages.create({
-            model: modelName,
-            max_tokens: maxTokens,
-            system: sysPrompt,
-            messages: [{ role: 'user', content: userQuery }]
-        });
-        return {
-            provider: 'Anthropic Claude',
-            model: modelName,
-            text: response.content?.find(block => block.type === 'text')?.text || 'The provider returned an empty response.'
         };
     }
 

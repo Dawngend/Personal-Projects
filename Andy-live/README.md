@@ -14,7 +14,7 @@ Location: `D:\Personal Projects\Andy-live`
 | **2. Fast Reasoning & Analysis** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Flagship open-weights LPU speed |
 | **3. Multimodal / Vision** | `qwen/qwen3.6-27b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Fast screen OCR & vision |
 | **4. Search & News Grounding** | `gemini-3.6-flash` | Google AI Studio | `200 tokens` | Real-time web search grounding |
-| **5. Complex System Architecture**| `claude-sonnet-5` | Anthropic Console | `400 tokens` | Deep architectural specs & diagrams |
+| **5. Complex System Architecture**| `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `400 tokens` | Deep architectural specs & diagrams |
 | **6. Hard Coding & Algorithms** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `500 tokens` | Strong coding reasoning without a separate API account |
 
 ---
@@ -62,7 +62,6 @@ Andy Live is an overt interview-preparation and communication-coaching tool. Fut
    ```env
    GROQ_API_KEY=gsk_...
    GEMINI_API_KEY=AIzaSy_...
-   ANTHROPIC_API_KEY=sk-ant-api03_...
    ```
 
 3. **Run Andy Live**:
