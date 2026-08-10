@@ -38,13 +38,13 @@ class SmartAIRouter {
         return 'FAST_TALKING_POINTS'; // Default to Groq gpt-oss-20b for maximum speed
     }
 
-    async routeQuery(userQuery, customPrompt = null, imageBuffer = null, forcedProvider = null) {
+    async routeQuery(userQuery, customPrompt = null, imageInput = null, forcedProvider = null) {
         if (typeof userQuery !== 'string' || !userQuery.trim()) {
             throw new Error('Enter an interview question before sending.');
         }
 
         const sysPrompt = customPrompt || this.systemPrompt || 'Answer in 1-3 bullet points.';
-        const intent = forcedProvider ? forcedProvider.toUpperCase() : this.classifyIntent(userQuery, !!imageBuffer);
+        const intent = forcedProvider ? forcedProvider.toUpperCase() : this.classifyIntent(userQuery, Boolean(imageInput));
         
         const startTime = Date.now();
         let result = { provider: '', model: '', text: '', latencyMs: 0 };
@@ -74,7 +74,7 @@ class SmartAIRouter {
                     break;
 
                 case 'VISION':
-                    result = await this.callGroq('qwen/qwen3.6-27b', sysPrompt, userQuery, 300);
+                    result = await this.callGroq('qwen/qwen3.6-27b', sysPrompt, userQuery, 300, imageInput);
                     break;
 
                 default:
@@ -114,13 +114,24 @@ class SmartAIRouter {
         };
     }
 
-    async callGroq(modelName, sysPrompt, userQuery, maxTokens) {
+    async callGroq(modelName, sysPrompt, userQuery, maxTokens, imageInput = null) {
         if (!this.groq) throw new Error('GROQ_API_KEY is not configured in .env');
+        const userContent = imageInput
+            ? [
+                { type: 'text', text: userQuery },
+                {
+                    type: 'image_url',
+                    image_url: {
+                        url: `data:${imageInput.mimeType};base64,${imageInput.data.toString('base64')}`
+                    }
+                }
+            ]
+            : userQuery;
         const res = await this.groq.chat.completions.create({
             model: modelName,
             messages: [
                 { role: 'system', content: sysPrompt },
-                { role: 'user', content: userQuery }
+                { role: 'user', content: userContent }
             ],
             max_tokens: maxTokens
         });

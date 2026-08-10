@@ -124,6 +124,35 @@ body {
     gap: 8px;
 }
 
+.attach-button {
+    white-space: nowrap;
+}
+
+.image-attachment {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 14px;
+    background: rgba(30, 41, 59, 0.95);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    color: #93c5fd;
+    font-size: 12px;
+}
+
+.image-attachment.hidden {
+    display: none;
+}
+
+.image-attachment button {
+    border: 0;
+    background: transparent;
+    color: #cbd5e1;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+}
+
 .hud-footer input {
     flex: 1;
     background: rgba(30, 41, 59, 0.8);

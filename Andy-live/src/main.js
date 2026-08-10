@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, dialog } = require('electron');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const SmartAIRouter = require('./utils/smartRouter');
@@ -8,6 +9,14 @@ const { getAvailableResumes, buildPersonalizedPrompt } = require('./utils/jdMatc
 let mainWindow = null;
 const router = new SmartAIRouter();
 const session = { jdText: '', resumePath: '', role: 'default' };
+const selectedImagePaths = new Set();
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Map([
+    ['.png', 'image/png'],
+    ['.jpg', 'image/jpeg'],
+    ['.jpeg', 'image/jpeg'],
+    ['.webp', 'image/webp']
+]);
 
 const ROLE_MODES = {
     mle: 'ML / AI Engineer Mode',
@@ -74,6 +83,41 @@ ipcMain.handle('send-query', async (event, { query, forcedProvider }) => {
         const allowedProviders = new Set(['', 'groq', 'gemini_search']);
         const provider = allowedProviders.has(forcedProvider) ? forcedProvider : '';
         const result = await router.routeQuery(String(query || '').slice(0, 12000), null, null, provider);
+        return { success: true, result };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
+});
+
+ipcMain.handle('select-image', async () => {
+    const selection = await dialog.showOpenDialog(mainWindow, {
+        title: 'Choose a screenshot to analyze',
+        properties: ['openFile'],
+        filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+    });
+    if (selection.canceled || !selection.filePaths[0]) return { canceled: true };
+
+    const imagePath = selection.filePaths[0];
+    selectedImagePaths.add(imagePath);
+    return { canceled: false, imagePath, name: path.basename(imagePath) };
+});
+
+ipcMain.handle('send-image-query', async (event, { query, imagePath, forcedProvider }) => {
+    try {
+        if (!selectedImagePaths.has(imagePath)) throw new Error('Select the screenshot again before analyzing it.');
+        selectedImagePaths.delete(imagePath);
+
+        const extension = path.extname(imagePath).toLowerCase();
+        const mimeType = SUPPORTED_IMAGE_TYPES.get(extension);
+        if (!mimeType) throw new Error('Use a PNG, JPG, JPEG, or WEBP screenshot.');
+
+        const fileInfo = await fs.promises.stat(imagePath);
+        if (!fileInfo.isFile() || fileInfo.size > MAX_IMAGE_BYTES) {
+            throw new Error('Choose an image file smaller than 10 MB.');
+        }
+
+        const data = await fs.promises.readFile(imagePath);
+        const result = await router.routeQuery(String(query || '').slice(0, 12000), null, { data, mimeType });
         return { success: true, result };
     } catch (err) {
         return { success: false, error: err.message };

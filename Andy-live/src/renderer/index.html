@@ -52,6 +52,7 @@
 
         <!-- Quick Query Input -->
         <footer class="hud-footer">
+            <button id="attachImageBtn" class="btn-sm attach-button" type="button">🖼️ Screenshot</button>
             <input type="text" id="queryInput" placeholder="Ask question / past question (Press Enter)..." />
             <select id="forcedProviderSelect" class="provider-picker">
                 <option value="">⚡ Auto Router</option>
@@ -59,6 +60,10 @@
                 <option value="gemini_search">Gemini 3.6 (Search)</option>
             </select>
         </footer>
+        <div id="imageAttachment" class="image-attachment hidden" aria-live="polite">
+            <span id="imageAttachmentName"></span>
+            <button id="clearImageBtn" type="button" aria-label="Remove screenshot attachment">×</button>
+        </div>
     </div>
 
     <script src="app.js"></script>

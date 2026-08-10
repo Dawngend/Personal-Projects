@@ -36,6 +36,7 @@ Location: `D:\Personal Projects\Andy-live`
 1. Start the app, open **Setup JD**, paste the role description, and select a resume or let Andy auto-detect one.
 2. Ask/paste each interviewer question into the footer. The router chooses a model based on intent, or you can override it from the provider menu.
 3. Switch framing immediately with `Ctrl + Shift + 1` (ML/AI), `Ctrl + Shift + 2` (Backend), or `Ctrl + Shift + 3` (Data Science). The active mode updates the system prompt for the current session.
+4. To analyze a visual, choose **Screenshot**, explicitly select a PNG/JPG/WEBP image (10 MB maximum), type a question, and press Enter. The image is sent only for that request to Groq's vision route; Andy Live does not perform automatic screen capture.
 
 ## Configuration and failure behavior
 

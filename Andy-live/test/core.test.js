@@ -12,6 +12,7 @@ test('router classifies interview intents into the prescribed routes', () => {
     assert.equal(router.classifyIntent('Implement an LRU cache in Python'), 'HARD_CODING');
     assert.equal(router.classifyIntent('What is the company’s latest funding?'), 'SEARCH_REQUIRED');
     assert.equal(router.classifyIntent('Tell me about yourself'), 'FAST_TALKING_POINTS');
+    assert.equal(router.classifyIntent('What does this screenshot show?', true), 'VISION');
 });
 
 test('router rejects an empty query before reaching a provider', async () => {

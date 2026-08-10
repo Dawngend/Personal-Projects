@@ -5,11 +5,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     const jdInput = document.getElementById('jdInput');
     const resumeSelect = document.getElementById('resumeSelect');
     const queryInput = document.getElementById('queryInput');
+    const attachImageBtn = document.getElementById('attachImageBtn');
+    const imageAttachment = document.getElementById('imageAttachment');
+    const imageAttachmentName = document.getElementById('imageAttachmentName');
+    const clearImageBtn = document.getElementById('clearImageBtn');
     const forcedProviderSelect = document.getElementById('forcedProviderSelect');
     const responseOutput = document.getElementById('responseOutput');
     const providerTag = document.getElementById('providerTag');
     const latencyTag = document.getElementById('latencyTag');
     const activeRoleBadge = document.getElementById('activeRoleBadge');
+    let selectedImage = null;
 
     try {
         const resumes = await window.api.getAvailableResumes();
@@ -25,6 +30,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     setupBtn.addEventListener('click', () => {
         setupModal.classList.remove('hidden');
+    });
+
+    attachImageBtn.addEventListener('click', async () => {
+        const selection = await window.api.selectImage();
+        if (selection.canceled) return;
+        selectedImage = selection;
+        imageAttachmentName.textContent = `Screenshot attached: ${selection.name}`;
+        imageAttachment.classList.remove('hidden');
+    });
+
+    clearImageBtn.addEventListener('click', () => {
+        selectedImage = null;
+        imageAttachment.classList.add('hidden');
     });
 
     const setResponse = (message, className = '') => {
@@ -67,7 +85,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             providerTag.textContent = 'Thinking...';
             latencyTag.textContent = '';
 
-            const res = await window.api.sendQuery(query, forcedProvider);
+            const res = selectedImage
+                ? await window.api.sendImageQuery(query, selectedImage.imagePath, forcedProvider)
+                : await window.api.sendQuery(query, forcedProvider);
+
+            if (selectedImage) {
+                selectedImage = null;
+                imageAttachment.classList.add('hidden');
+            }
 
             if (res.success && res.result) {
                 const { provider, model, text, latencyMs } = res.result;
