@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const setupModal = document.getElementById('setupModal');
     const historyModal = document.getElementById('historyModal');
     const setupBtn = document.getElementById('setupBtn');
+    const debugBtn = document.getElementById('debugBtn');
     const historyBtn = document.getElementById('historyBtn');
     const closeHistoryBtn = document.getElementById('closeHistoryBtn');
     const clearHistoryBtn = document.getElementById('clearHistoryBtn');
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const latencyTag = document.getElementById('latencyTag');
     const activeRoleBadge = document.getElementById('activeRoleBadge');
     let selectedImage = null;
+    let latestFailure = null;
     const sessionHistory = [];
 
     const createHistoryMarkdown = () => {
@@ -120,6 +122,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         responseOutput.appendChild(paragraph);
     };
 
+    const recordFailure = (message, context = {}) => {
+        latestFailure = { message, context };
+        debugBtn.classList.remove('hidden');
+    };
+
+    const clearFailure = () => {
+        latestFailure = null;
+        debugBtn.classList.add('hidden');
+    };
+
+    debugBtn.addEventListener('click', async () => {
+        if (!latestFailure) return;
+        debugBtn.disabled = true;
+        debugBtn.textContent = 'Generating…';
+        try {
+            const result = await window.api.generateDebugPrompt(latestFailure.message, latestFailure.context);
+            if (!result.success) throw new Error(result.error || 'Unable to generate a debug prompt.');
+            await window.api.copyText(result.prompt);
+            responseOutput.textContent = result.prompt;
+            providerTag.textContent = `${result.provider} (${result.model})`;
+            latencyTag.textContent = 'Copied to clipboard';
+            debugBtn.textContent = '✓ Debug prompt copied';
+        } catch (err) {
+            setResponse(err.message || 'Unable to generate a debug prompt.', 'error-text');
+            debugBtn.textContent = '🛠️ Generate debug prompt';
+        } finally {
+            debugBtn.disabled = false;
+        }
+    });
+
     saveSetupBtn.addEventListener('click', async () => {
         const jdText = jdInput.value.trim();
         const selectedResume = resumeSelect.value;
@@ -167,6 +199,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 providerTag.textContent = `${provider} (${model})`;
                 latencyTag.textContent = `${latencyMs}ms`;
                 responseOutput.textContent = text;
+                if (provider === 'Configuration required' || provider === 'Vision unavailable') {
+                    recordFailure(text, { provider, model, role: activeRoleBadge.textContent, query, imageName: imageName || 'none' });
+                } else {
+                    clearFailure();
+                }
                 sessionHistory.push({
                     timestamp: new Date().toLocaleTimeString(),
                     role: activeRoleBadge.textContent,
@@ -179,7 +216,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             } else {
                 providerTag.textContent = 'Error';
-                setResponse(res.error || 'Failed to generate response', 'error-text');
+                const error = res.error || 'Failed to generate response';
+                setResponse(error, 'error-text');
+                recordFailure(error, { role: activeRoleBadge.textContent, query, imageName: imageName || 'none' });
             }
         }
     });

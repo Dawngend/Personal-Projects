@@ -16,6 +16,7 @@
                 <span id="activeRoleBadge" class="badge">Default Profile</span>
             </div>
             <div class="actions">
+                <button id="debugBtn" class="btn-sm hidden" type="button">🛠️ Generate debug prompt</button>
                 <button id="historyBtn" class="btn-sm">📝 History</button>
                 <button id="setupBtn" class="btn-sm">⚙️ Setup JD</button>
             </div>
@@ -74,7 +75,6 @@
             <select id="forcedProviderSelect" class="provider-picker">
                 <option value="">⚡ Auto Router</option>
                 <option value="groq">Groq (gpt-oss-20b)</option>
-                <option value="gemini_search">Gemini 3.6 (Search)</option>
             </select>
         </footer>
         <div id="imageAttachment" class="image-attachment hidden" aria-live="polite">

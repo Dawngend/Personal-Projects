@@ -1,6 +1,6 @@
 # Andy Live 🎙️
 
-**Andy Live** is a personalized, discreet real-time interview & technical teleprompter HUD assistant powered by a smart multi-AI provider router and dynamic resume/JD matcher.
+**Andy Live** is a personalized, discreet real-time interview & technical teleprompter HUD assistant powered by a Groq router and dynamic resume/JD matcher.
 
 Location: `D:\Personal Projects\Andy-live`
 
@@ -13,7 +13,7 @@ Location: `D:\Personal Projects\Andy-live`
 | **1. Fast Spoken Talking Points** | `openai/gpt-oss-20b` | Groq LPU (`GROQ_API_KEY`) | `150 tokens` | Sub-200ms spoken hints |
 | **2. Fast Reasoning & Analysis** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Flagship open-weights LPU speed |
 | **3. Multimodal / Vision** | `qwen/qwen3.6-27b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Fast screen OCR & vision |
-| **4. Search & News Grounding** | `gemini-3.6-flash` | Google AI Studio | `200 tokens` | Real-time web search grounding |
+| **4. Fresh-information Requests** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `300 tokens` | Clearly labels the lack of live web access, then gives durable guidance |
 | **5. Complex System Architecture**| `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `400 tokens` | Deep architectural specs & diagrams |
 | **6. Hard Coding & Algorithms** | `openai/gpt-oss-120b` | Groq LPU (`GROQ_API_KEY`) | `500 tokens` | Strong coding reasoning without a separate API account |
 
@@ -41,9 +41,9 @@ Location: `D:\Personal Projects\Andy-live`
 
 ## Configuration and failure behavior
 
-Copy `.env.example` to `.env`. At minimum, configure `GROQ_API_KEY` for the default fast-answer route. The remaining keys enable their respective specialized routes.
+Copy `.env.example` to `.env` and configure `GROQ_API_KEY`.
 
-If a selected provider is unavailable or errors, Andy attempts a configured alternate provider. It never writes API keys or resume content to disk.
+If a request fails, Andy Live can generate a sanitized, ready-to-paste debug prompt for Codex or Claude Code. It never writes API keys or resume content to disk.
 
 ## Product boundary
 
@@ -63,7 +63,6 @@ Andy Live is an overt interview-preparation and communication-coaching tool. Fut
    Copy `.env.example` to `.env` and insert your keys:
    ```env
    GROQ_API_KEY=gsk_...
-   GEMINI_API_KEY=AIzaSy_...
    ```
 
 3. **Run Andy Live**:

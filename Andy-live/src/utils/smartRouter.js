@@ -1,10 +1,8 @@
 const { Groq } = require('groq-sdk');
-const { GoogleGenAI } = require('@google/genai');
 
 class SmartAIRouter {
     constructor() {
         this.groq = process.env.GROQ_API_KEY ? new Groq({ apiKey: process.env.GROQ_API_KEY }) : null;
-        this.gemini = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
         this.systemPrompt = '';
     }
 
@@ -15,7 +13,6 @@ class SmartAIRouter {
     getConfiguredProviders() {
         return {
             groq: Boolean(this.groq),
-            gemini: Boolean(this.gemini),
         };
     }
 
@@ -57,8 +54,12 @@ class SmartAIRouter {
                     break;
 
                 case 'SEARCH_REQUIRED':
-                case 'GEMINI_SEARCH':
-                    result = await this.callGeminiFlash('gemini-3.6-flash', sysPrompt, userQuery, 200, true);
+                    result = await this.callGroq(
+                        'openai/gpt-oss-120b',
+                        `${sysPrompt}\n\nDo not claim live or current web information. State this limit briefly, then give durable guidance based on the user's question.`,
+                        userQuery,
+                        300
+                    );
                     break;
 
                 case 'SYSTEM_DESIGN':
@@ -102,9 +103,6 @@ class SmartAIRouter {
         if (failedIntent !== 'FAST_TALKING_POINTS' && failedIntent !== 'GROQ' && this.groq) {
             fallbackCalls.push(() => this.callGroq('openai/gpt-oss-20b', sysPrompt, userQuery, 150));
         }
-        if (failedIntent !== 'SEARCH_REQUIRED' && failedIntent !== 'GEMINI_SEARCH' && this.gemini) {
-            fallbackCalls.push(() => this.callGeminiFlash('gemini-3.6-flash', sysPrompt, userQuery, 200, false));
-        }
         for (const fallback of fallbackCalls) {
             try {
                 const result = await fallback();
@@ -122,7 +120,7 @@ class SmartAIRouter {
         };
     }
 
-    async callGroq(modelName, sysPrompt, userQuery, maxTokens, imageInput = null) {
+    async callGroq(modelName, sysPrompt, userQuery, maxTokens, imageInput = null, reasoningEffort = null) {
         if (!this.groq) throw new Error('GROQ_API_KEY is not configured in .env');
         const userContent = imageInput
             ? [
@@ -143,7 +141,7 @@ class SmartAIRouter {
             ],
             max_tokens: maxTokens
         };
-        if (modelName === 'qwen/qwen3.6-27b') request.reasoning_effort = 'none';
+        if (reasoningEffort || modelName === 'qwen/qwen3.6-27b') request.reasoning_effort = reasoningEffort || 'none';
 
         const res = await this.groq.chat.completions.create(request);
         return {
@@ -153,21 +151,21 @@ class SmartAIRouter {
         };
     }
 
-    async callGeminiFlash(modelName, sysPrompt, userQuery, maxTokens, enableSearch = false) {
-        if (!this.gemini) throw new Error('GEMINI_API_KEY is not configured in .env');
-        const config = { maxOutputTokens: maxTokens };
-        if (enableSearch) config.tools = [{ googleSearch: {} }];
-
-        const response = await this.gemini.models.generateContent({
-            model: modelName,
-            contents: `${sysPrompt}\n\nUser Question: ${userQuery}`,
-            config
-        });
-        return {
-            provider: 'Google Gemini',
-            model: modelName + (enableSearch ? ' (Search)' : ''),
-            text: response.text || 'The provider returned an empty response.'
-        };
+    async createDebugPrompt(errorMessage, context = {}) {
+        const redact = value => String(value || '')
+            .replace(/\b(?:gsk|sk|AIza)[A-Za-z0-9_-]{12,}\b/g, '[REDACTED]')
+            .slice(0, 4000);
+        const contextText = Object.entries(context)
+            .map(([key, value]) => `${key}: ${redact(value)}`)
+            .join('\n');
+        return this.callGroq(
+            'openai/gpt-oss-20b',
+            'Create a concise Markdown debugging prompt for Codex or Claude Code. Include observed behavior, relevant context, reproduction steps, expected behavior, and a request for the smallest safe fix. Output only the ready-to-paste prompt. Never include secrets or suggest bypassing safeguards.',
+            `Observed error or failure:\n${redact(errorMessage)}\n\nContext:\n${contextText || 'No additional context provided.'}`,
+            350,
+            null,
+            'low'
+        );
     }
 
 }

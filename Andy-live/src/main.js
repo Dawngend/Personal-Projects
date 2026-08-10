@@ -80,7 +80,7 @@ ipcMain.handle('setup-session', async (event, { jdText, resumePath }) => {
 
 ipcMain.handle('send-query', async (event, { query, forcedProvider }) => {
     try {
-        const allowedProviders = new Set(['', 'groq', 'gemini_search']);
+        const allowedProviders = new Set(['', 'groq']);
         const provider = allowedProviders.has(forcedProvider) ? forcedProvider : '';
         const result = await router.routeQuery(String(query || '').slice(0, 12000), null, null, provider);
         return { success: true, result };
@@ -140,6 +140,21 @@ ipcMain.handle('export-session-history', async (event, markdown) => {
     if (selection.canceled || !selection.filePath) return { canceled: true };
     await fs.promises.writeFile(selection.filePath, markdown.slice(0, 1_000_000), 'utf8');
     return { success: true, filePath: selection.filePath };
+});
+
+ipcMain.handle('copy-text', async (event, text) => {
+    if (typeof text !== 'string' || !text.trim()) throw new Error('There is no text to copy.');
+    clipboard.writeText(text.slice(0, 1_000_000));
+    return { success: true };
+});
+
+ipcMain.handle('generate-debug-prompt', async (event, { errorMessage, context }) => {
+    try {
+        const result = await router.createDebugPrompt(errorMessage, context);
+        return { success: true, prompt: result.text, provider: result.provider, model: result.model };
+    } catch (err) {
+        return { success: false, error: err.message };
+    }
 });
 
 app.whenReady().then(createWindow);

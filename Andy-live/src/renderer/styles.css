@@ -5,6 +5,10 @@
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
+.hidden {
+    display: none !important;
+}
+
 body {
     background: transparent;
     color: #e2e8f0;

@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('api', {
     sendImageQuery: (query, imagePath, forcedProvider) => ipcRenderer.invoke('send-image-query', { query, imagePath, forcedProvider }),
     copySessionHistory: (markdown) => ipcRenderer.invoke('copy-session-history', markdown),
     exportSessionHistory: (markdown) => ipcRenderer.invoke('export-session-history', markdown),
+    copyText: (text) => ipcRenderer.invoke('copy-text', text),
+    generateDebugPrompt: (errorMessage, context) => ipcRenderer.invoke('generate-debug-prompt', { errorMessage, context }),
     onModelResponse: (callback) => ipcRenderer.on('model-response', (event, data) => callback(data)),
     onRoleChanged: (callback) => ipcRenderer.on('role-changed', (event, data) => callback(data))
 });

@@ -1,7 +1,7 @@
 {
   "name": "andy-live",
   "version": "1.0.0",
-  "description": "Personalized Multi-AI Interview & Technical Teleprompter Assistant",
+  "description": "Personalized Groq-powered interview and technical teleprompter assistant",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -12,15 +12,11 @@
     "ai",
     "teleprompter",
     "interview",
-    "groq",
-    "gemini",
-    "claude",
-    "openai"
+    "groq"
   ],
   "author": "Dawn Andrei Pamesa",
   "license": "MIT",
   "dependencies": {
-    "@google/genai": "^2.15.0",
     "dotenv": "^16.4.7",
     "groq-sdk": "^0.15.0"
   },
