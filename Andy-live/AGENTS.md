@@ -41,8 +41,17 @@
 ---
 
 ## 🛑 AGY / Codex Execution Rules
-1. **Command Execution:** DO NOT run terminal commands (`npm install`, `npm start`, build scripts) without explicit user greenlight.
+1. **Command Execution:** Autonomous execution of terminal commands (`npm install`, `npm start`, `npm test`, build scripts) is explicitly authorized by the developer for task completion and verification.
 2. **Canonical Personal Context:** For any identity-, portfolio-, career-, hardware-, or preference-dependent work, read `D:\Andy_Brain\01_Career_and_Resume\Dawn_Personal_Context.md`. It is the only editable source of truth; `D:\Resumes\agy-profile\PERSONAL_CONTEXT.md` is its Git-synced distribution copy.
 3. **Context Persistence:** Maintain `SKILL.md`, `.env.example`, and full model routing rules up to date.
-4. **Personal Context Sync:** When a meaningful, reusable update is made to Dawn's developer profile, project portfolio, working preferences, or AGY guidance, update the Git distribution copy and sync `https://github.com/Dawngend/dawn-personal-context`.
+4. **Personal Context Sync:** `D:\Resumes\agy-profile\PERSONAL_CONTEXT.md` is an NTFS hard link to the canonical vault file, `D:\Andy_Brain\01_Career_and_Resume\Dawn_Personal_Context.md`. Vault edits are therefore reflected immediately in the distribution path. When a meaningful, reusable update is made, commit and push the distribution repository to `https://github.com/Dawngend/dawn-personal-context`; never replace the linked file with an independent copy.
 5. **Workspace Git Sync:** When project changes are ready to share, commit and push/sync `D:\Personal Projects` to `https://github.com/Dawngend/Personal-Projects`. Check the actual Git root first; the directory may be a workspace rather than the repository root.
+
+## 💻 Cross-Device Codex Handoff
+
+These instructions are the portable source of truth for Codex sessions opened in this project, including on `LAPTOP-13B1CFMo`.
+
+1. **Read first:** Start work by reading this `AGENTS.md`; for identity-, career-, portfolio-, hardware-, or preference-dependent work, read the canonical vault context specified above before acting.
+2. **Pre-authorized routine work:** Within this trusted workspace, independently inspect files and Git state; install project dependencies; run development, build, lint, and test commands; edit project files; and commit/push completed project changes to the configured workspace remote.
+3. **Ask before high-risk actions only:** Request confirmation before destructive or difficult-to-reverse operations, handling or exposing credentials/private data, modifying files outside the requested scope or trusted workspace, production/deployment changes, external communications, or actions that incur meaningful cost.
+4. **Device-local settings:** Keep Codex authentication, runtime paths, caches, and sandbox configuration local to each device. Do not copy `.codex` secrets, auth files, databases, or machine-specific configuration between devices. Repository instructions govern the shared workflow.
