@@ -105,6 +105,14 @@ class DeckRepository:
             rows = connection.execute("SELECT id, name, modules_included, subject FROM decks").fetchall()
         return [Deck(*row) for row in rows]
 
+    def get(self, deck_id: int) -> Deck | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT id, name, modules_included, subject FROM decks WHERE id = ?",
+                (deck_id,),
+            ).fetchone()
+        return Deck(*row) if row else None
+
     def create_with_cards(
         self, name: str, modules_included: str, subject: str, cards: Iterable[NewCard]
     ) -> Deck:
@@ -151,6 +159,15 @@ class CardRepository:
                 (deck_id,),
             ).fetchall()
         return [Card(*row) for row in rows]
+
+    def get(self, card_id: int) -> Card | None:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT id, deck_id, type, question, correct_answer, options, times_missed "
+                "FROM cards WHERE id = ?",
+                (card_id,),
+            ).fetchone()
+        return Card(*row) if row else None
 
     def add(self, deck_id: int, card: NewCard) -> Card:
         with self._connection() as connection:
