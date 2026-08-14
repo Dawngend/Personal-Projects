@@ -4,3 +4,4 @@ __pycache__/
 reviewer.db
 uploads/
 course_brain_db/
+extraction_cache/

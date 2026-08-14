@@ -4,6 +4,7 @@ import json
 import os
 import database as db 
 from generator import generate_custom_deck 
+from grading import decode_card_options, grade_enumeration, grade_problem_answer, problem_payload
 
 # ── Theme & Configuration ────────────────────────────────────────────────────
 # We set layout to "centered" natively, but our CSS will strictly enforce the width
@@ -95,6 +96,18 @@ def get_available_modules() -> list[str]:
         return []
     return [f for f in os.listdir(UPLOAD_DIR) if f.endswith(('.pdf', '.pptx'))]
 
+
+def _next_question_button() -> None:
+    """Advance all card types through the existing review-session state."""
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("➡️ Next Question", type="primary"):
+            st.session_state.current_index += 1
+            st.session_state.wrong_attempts_on_card.clear()
+            st.session_state.answered_correctly = False
+            st.session_state.answer_feedback = None
+            st.rerun()
+
 # ── Session State Initialization ─────────────────────────────────────────────
 if "quiz_started" not in st.session_state:
     st.session_state.quiz_started = False
@@ -110,6 +123,8 @@ if "card_status" not in st.session_state:
     st.session_state.card_status = "unanswered" 
 if "answered_correctly" not in st.session_state:         
     st.session_state.answered_correctly = False          
+if "answer_feedback" not in st.session_state:
+    st.session_state.answer_feedback = None
 
 # ── App Navigation ───────────────────────────────────────────────────────────
 st.sidebar.title("🤖 Andy's Hub")
@@ -151,6 +166,18 @@ if app_mode == "✨ Create New Reviewer":
             selected_files = st.multiselect("Select modules to include:", available_files)
             deck_name = st.text_input("Reviewer Name (e.g., Midterm Coverage)")
             subject_name = st.text_input("Subject (e.g., Computer Science)")
+            question_style_label = st.selectbox(
+                "Question style",
+                options=["Multiple Choice", "Enumeration", "Problem-Solving", "Mixed"],
+                index=3,
+                help="Choose the mix for this deck. Problem-Solving mirrors the uploaded module's own worked-problem style.",
+            )
+            question_style = {
+                "Multiple Choice": "multiple_choice",
+                "Enumeration": "enumeration",
+                "Problem-Solving": "problem",
+                "Mixed": "mixed",
+            }[question_style_label]
             
             # The upgraded exact number input we discussed
             target_questions = st.number_input("How many total situational questions do you want?", min_value=1, max_value=100, value=20, step=1)
@@ -168,7 +195,8 @@ if app_mode == "✨ Create New Reviewer":
                             selected_files=selected_files,
                             deck_name=deck_name,
                             subject=subject_name,
-                            total_questions=target_questions
+                            total_questions=target_questions,
+                            question_style=question_style,
                         )
                         if new_deck_id:
                             st.success(f"Done! Andy created '{deck_name}'. Switch to the Study Dashboard!")
@@ -202,12 +230,13 @@ elif app_mode == "📚 Study Dashboard":
                         "type": c[2],
                         "question": c[3],
                         "correct_answer": c[4],
-                        "options": json.loads(c[5]) if c[5] else []
+                        "options": decode_card_options(c[5])
                     })
                 st.session_state.current_index = 0
                 st.session_state.wrong_attempts_on_card = set()
                 st.session_state.failed_cards_pool = []
                 st.session_state.answered_correctly = False
+                st.session_state.answer_feedback = None
                 st.session_state.quiz_started = True
 
     if st.session_state.quiz_started and st.session_state.current_index < len(st.session_state.cards_queue):
@@ -231,45 +260,103 @@ elif app_mode == "📚 Study Dashboard":
         
         options = current_card["options"]
         correct = current_card["correct_answer"]
-        
-        # --- PHASE 1: GUESSING ---
-        if not st.session_state.answered_correctly:
-            for option in options:
-                if option in st.session_state.wrong_attempts_on_card:
-                    st.button(f"❌ {option}", key=f"wrong_{st.session_state.current_index}_{option}", disabled=True)
+
+        if current_card["type"] == "multiple_choice":
+            # Existing multiple-choice interaction remains unchanged.
+            if not st.session_state.answered_correctly:
+                for option in options:
+                    if option in st.session_state.wrong_attempts_on_card:
+                        st.button(f"❌ {option}", key=f"wrong_{st.session_state.current_index}_{option}", disabled=True)
+                    else:
+                        if st.button(option, key=f"opt_{st.session_state.current_index}_{option}"):
+                            if option == correct:
+                                st.session_state.answered_correctly = True
+                                st.rerun()
+                            else:
+                                st.session_state.wrong_attempts_on_card.add(option)
+                                if current_card not in st.session_state.failed_cards_pool:
+                                    st.session_state.failed_cards_pool.append(current_card)
+                                    db.update_card_miss_count(current_card["id"])
+                                st.rerun()
+
+                if st.session_state.wrong_attempts_on_card:
+                    st.warning("Not quite right. Analyze the scenario and try again.")
+            else:
+                for option in options:
+                    if option == correct:
+                        st.button(f"✅ {option}", key=f"correct_{st.session_state.current_index}_{option}", disabled=True, type="primary")
+                    else:
+                        st.button(option, key=f"gray_{st.session_state.current_index}_{option}", disabled=True)
+                st.success("🎯 Spot on! Take a moment to review your logic before moving on.")
+                _next_question_button()
+
+        elif current_card["type"] == "enumeration":
+            expected_items = options if isinstance(options, list) else []
+            answer = st.text_area(
+                "List the items you remember (separate them with commas or new lines):",
+                key=f"enumeration_{current_card['id']}",
+                disabled=st.session_state.answered_correctly,
+            )
+            feedback = st.session_state.answer_feedback
+            if not st.session_state.answered_correctly and st.button(
+                "Check enumeration", key=f"check_enumeration_{current_card['id']}", type="primary"
+            ):
+                caught, missed = grade_enumeration(answer, expected_items)
+                is_correct = bool(expected_items) and not missed
+                st.session_state.answer_feedback = {
+                    "card_id": current_card["id"],
+                    "caught": caught,
+                    "missed": missed,
+                    "correct": is_correct,
+                }
+                if is_correct:
+                    st.session_state.answered_correctly = True
+                elif current_card not in st.session_state.failed_cards_pool:
+                    st.session_state.failed_cards_pool.append(current_card)
+                    db.update_card_miss_count(current_card["id"])
+                st.rerun()
+            if feedback and feedback.get("card_id") == current_card["id"]:
+                st.write("**Caught:** " + (", ".join(feedback["caught"]) or "none"))
+                st.write("**Missed:** " + (", ".join(feedback["missed"]) or "none"))
+                if feedback["correct"]:
+                    st.success("🎯 You caught every expected item.")
+                    _next_question_button()
                 else:
-                    if st.button(option, key=f"opt_{st.session_state.current_index}_{option}"):
-                        if option == correct:
-                            st.session_state.answered_correctly = True 
-                            st.rerun()
-                        else:
-                            st.session_state.wrong_attempts_on_card.add(option)
-                            if current_card not in st.session_state.failed_cards_pool:
-                                st.session_state.failed_cards_pool.append(current_card)
-                                db.update_card_miss_count(current_card["id"]) 
-                            st.rerun()
+                    st.warning("Add the missed items and check again.")
 
-            if st.session_state.wrong_attempts_on_card:
-                st.warning("Not quite right. Analyze the scenario and try again.")
+        elif current_card["type"] == "problem":
+            final_answer, solution_steps = problem_payload(options, correct)
+            answer = st.text_input(
+                "Your final answer:",
+                key=f"problem_{current_card['id']}",
+                disabled=st.session_state.answered_correctly,
+            )
+            feedback = st.session_state.answer_feedback
+            if not st.session_state.answered_correctly and st.button(
+                "Check final answer", key=f"check_problem_{current_card['id']}", type="primary"
+            ):
+                is_correct = grade_problem_answer(answer, final_answer)
+                st.session_state.answer_feedback = {"card_id": current_card["id"], "correct": is_correct}
+                if is_correct:
+                    st.session_state.answered_correctly = True
+                elif current_card not in st.session_state.failed_cards_pool:
+                    st.session_state.failed_cards_pool.append(current_card)
+                    db.update_card_miss_count(current_card["id"])
+                st.rerun()
+            if st.button("Show solution steps", key=f"solution_{current_card['id']}"):
+                if solution_steps:
+                    st.markdown("\n".join(f"{index}. {step}" for index, step in enumerate(solution_steps, start=1)))
+                else:
+                    st.info("No worked solution was stored for this card.")
+            if feedback and feedback.get("card_id") == current_card["id"]:
+                if feedback["correct"]:
+                    st.success("🎯 Correct final answer. Review the solution steps for the full method.")
+                    _next_question_button()
+                else:
+                    st.warning("Not quite. Show the solution steps, then try again.")
 
-        # --- PHASE 2: REVIEW MODE ---
         else:
-            for option in options:
-                if option == correct:
-                    st.button(f"✅ {option}", key=f"correct_{st.session_state.current_index}_{option}", disabled=True, type="primary")
-                else:
-                    st.button(option, key=f"gray_{st.session_state.current_index}_{option}", disabled=True)
-            
-            st.success("🎯 Spot on! Take a moment to review your logic before moving on.")
-            
-            # Use columns to center the Next Question button nicely
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("➡️ Next Question", type="primary"):
-                    st.session_state.current_index += 1
-                    st.session_state.wrong_attempts_on_card.clear()
-                    st.session_state.answered_correctly = False 
-                    st.rerun()
+            st.error(f"Unsupported card type: {current_card['type']}")
 
     elif st.session_state.quiz_started:
         st.balloons()
@@ -287,6 +374,7 @@ elif app_mode == "📚 Study Dashboard":
                 st.session_state.wrong_attempts_on_card.clear()
                 st.session_state.failed_cards_pool = []
                 st.session_state.answered_correctly = False
+                st.session_state.answer_feedback = None
                 st.rerun()
                 
         with col2:
@@ -297,6 +385,7 @@ elif app_mode == "📚 Study Dashboard":
                     st.session_state.current_index = 0
                     st.session_state.wrong_attempts_on_card.clear()
                     st.session_state.answered_correctly = False
+                    st.session_state.answer_feedback = None
                     st.rerun()
             else:
                 st.button("✨ Perfect Score Achieved!", disabled=True, type="primary")

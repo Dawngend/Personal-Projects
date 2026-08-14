@@ -1,8 +1,9 @@
 import os
 import io
+import hashlib
+from pathlib import Path
 import pdfplumber
 import pytesseract
-import streamlit as st
 from PIL import Image
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -10,9 +11,23 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 # Tesseract executable path for Windows
 #pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-def get_cache_filename(file_path):
-    """Creates a matching .txt filename next to the original file."""
-    return file_path + "_saved_text.txt"
+EXTRACTION_CACHE_DIR = Path(__file__).resolve().parent / "extraction_cache"
+
+
+def content_hash(file_path: str | os.PathLike[str]) -> str:
+    """Return a stable SHA-256 for an uploaded module without loading it all at once."""
+
+    digest = hashlib.sha256()
+    with open(file_path, "rb") as source:
+        while block := source.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def get_cache_filename(file_path: str | os.PathLike[str]) -> str:
+    """Store extraction text by source content, independent of the upload filename."""
+
+    return str(EXTRACTION_CACHE_DIR / f"{content_hash(file_path)}.txt")
 
 def extract_text_from_pdf(file_path, cache_file):
     extracted_text = ""
@@ -77,22 +92,20 @@ def extract_text_from_pptx(file_path, cache_file):
     except Exception as e:
         return f"Error reading PPTX: {e}"
 
-@st.cache_data
 def process_module_file_v2(file_path):
+    """Extract a supported module, reusing a local content-hash cache when possible."""
+
     _, file_extension = os.path.splitext(file_path)
     file_extension = file_extension.lower()
     
     cache_file = get_cache_filename(file_path)
+    os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     
     # Check if a saved text file already exists!
     if os.path.exists(cache_file):
         print(f"  [Fast Load] Found saved extraction! Skipping Tesseract for {file_path}...")
         with open(cache_file, "r", encoding="utf-8") as f:
             return f.read()
-
-    # If no cache exists, make sure we start with a clean text file
-    if os.path.exists(cache_file):
-        os.remove(cache_file)
 
     if file_extension == '.pdf':
         print(f"Processing PDF: {file_path}...")

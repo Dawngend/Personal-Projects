@@ -4,10 +4,13 @@ import re
 import sys
 import time
 import math
+from dataclasses import dataclass
+from typing import Callable
 from groq import Groq
 from rag_engine import add_to_memory, get_historical_context
 from extractor import process_module_file_v2
-from database import create_deck, add_card
+from database import add_card, create_deck, create_deck_with_cards
+from repositories import NewCard
 
 # ── Constants & Configuration ────────────────────────────────────────────────
 
@@ -16,29 +19,71 @@ MODEL_NAME = "llama-3.3-70b-versatile"
 
 MAX_CHUNK_CHARS = 12_000
 
+QUESTION_STYLES = {
+    "multiple_choice": "Multiple Choice",
+    "enumeration": "Enumeration",
+    "problem": "Problem-Solving",
+    "mixed": "Mixed",
+}
+
+CARD_FORMATS = (
+    'Every question object must have "type" and a non-empty "question". '
+    'For "multiple_choice", provide "options" as exactly 4 non-empty strings and '
+    '"correct_answer" as one option exactly. '
+    'For "enumeration", provide "correct_answer" as a JSON array of at least 2 '
+    'short expected items; do not provide multiple-choice options. '
+    'For "problem", provide "correct_answer" as the concise final answer and '
+    '"solution_steps" as a non-empty JSON array of worked, student-readable steps; '
+    'do not provide multiple-choice options.'
+)
+
 SYSTEM_PROMPT = (
-    "You are an elite Computer Science professor writing a tricky "
-    "application-based exam. Analyze the provided module text. Instead of "
-    "asking for basic definitions, you MUST generate highly practical, conceptual, and "
-    "situational scenario-based questions. "
+    "You are an elite Computer Science professor writing an application-based exam. "
+    "Analyze only the provided module text. Instead of asking for basic definitions, "
+    "generate practical, conceptual, and situational questions. "
     "If 'PAST RELEVANT KNOWLEDGE' is provided, try to create at least one conceptual question "
     "that connects the current module's concepts to the past knowledge. "
     "Output a strictly formatted JSON object with a single key 'questions' containing an array of objects. "
-    'Each object must have: "type" (must be "multiple_choice"), "question" '
-    '(string), "options" (array of exactly 4 strings), and '
-    '"correct_answer" (string matching one option exactly).'
+    + CARD_FORMATS
 )
 
 
-def get_andy_prompt(target_count: int) -> str:
+def get_andy_prompt(target_count: int, question_style: str = "mixed") -> str:
+    """Build a per-deck generation contract for the selected question style."""
+    style_instruction = _question_style_instruction(question_style, target_count)
     return (
         f"You are Andy, an elite Computer Science study buddy. "
-        f"Generate exactly {target_count} multiple-choice flashcards. "
+        f"Generate exactly {target_count} questions. "
         f"CRITICAL: Make them highly situational, practical, and scenario-based. "
         f"If 'PAST RELEVANT KNOWLEDGE' is provided, try to create at least one conceptual question "
         f"that connects the current module's concepts to the past knowledge. "
+        f"{style_instruction} "
         f"Output a strictly formatted JSON object with a single key 'questions' containing an array of objects. "
-        f'Each object must have: "type" (must be "multiple_choice"), "question", "options" (4 strings), and "correct_answer".'
+        + CARD_FORMATS
+    )
+
+
+def _question_style_instruction(question_style: str, target_count: int) -> str:
+    if question_style not in QUESTION_STYLES:
+        raise ValueError(f"Unsupported question style: {question_style}")
+    if question_style == "multiple_choice":
+        return 'Generate only questions with "type": "multiple_choice".'
+    if question_style == "enumeration":
+        return 'Generate only questions with "type": "enumeration".'
+    if question_style == "problem":
+        return (
+            'Generate only questions with "type": "problem". Problem questions must mirror '
+            'the uploaded module\'s own problem wording, notation, values, and solution method. '
+            'Do not invent generic textbook exercises disconnected from the taught material.'
+        )
+    if target_count >= 3:
+        mix_requirement = "Include at least one multiple_choice, one enumeration, and one problem question."
+    else:
+        mix_requirement = "Use as much type variety as the requested count allows."
+    return (
+        'Generate a balanced mix of "multiple_choice", "enumeration", and "problem" questions. '
+        + mix_requirement
+        + " Every problem must mirror the uploaded module's own problem style, notation, and method."
     )
 
 # ── Groq client ─────────────────────────────────────────────────────────────
@@ -172,7 +217,7 @@ def _validate_card(card: dict, index: int) -> bool:
     Return True only if *card* has every required field in the correct shape.
     Logs a descriptive warning and returns False for every malformed entry.
     """
-    required_keys = {"type", "question", "options", "correct_answer"}
+    required_keys = {"type", "question", "correct_answer"}
 
     if not isinstance(card, dict):
         print(f"  [Skipped] Card #{index}: not a dict.")
@@ -183,28 +228,210 @@ def _validate_card(card: dict, index: int) -> bool:
         print(f"  [Skipped] Card #{index}: missing keys {missing}.")
         return False
 
-    if card.get("type") != "multiple_choice":
-        print(f"  [Skipped] Card #{index}: type is '{card.get('type')}', expected 'multiple_choice'.")
+    card_type = card.get("type")
+    if card_type not in {"multiple_choice", "enumeration", "problem"}:
+        print(f"  [Skipped] Card #{index}: unsupported type '{card_type}'.")
         return False
 
-    options = card.get("options")
-    if not isinstance(options, list) or len(options) != 4:
-        print(f"  [Skipped] Card #{index}: 'options' must be a list of exactly 4 strings.")
+    if not isinstance(card.get("question"), str) or not card["question"].strip():
+        print(f"  [Skipped] Card #{index}: 'question' must be a non-empty string.")
         return False
 
-    if not all(isinstance(opt, str) for opt in options):
-        print(f"  [Skipped] Card #{index}: every option must be a string.")
-        return False
+    if card_type == "multiple_choice":
+        options = card.get("options")
+        if not isinstance(options, list) or len(options) != 4:
+            print(f"  [Skipped] Card #{index}: 'options' must be a list of exactly 4 strings.")
+            return False
 
-    if card.get("correct_answer") not in options:
-        print(
-            f"  [Skipped] Card #{index}: 'correct_answer' does not match any option.\n"
-            f"    correct_answer : {card.get('correct_answer')}\n"
-            f"    options        : {options}"
-        )
+        if not all(isinstance(opt, str) and opt.strip() for opt in options):
+            print(f"  [Skipped] Card #{index}: every option must be a non-empty string.")
+            return False
+
+        if card.get("correct_answer") not in options:
+            print(
+                f"  [Skipped] Card #{index}: 'correct_answer' does not match any option.\n"
+                f"    correct_answer : {card.get('correct_answer')}\n"
+                f"    options        : {options}"
+            )
+            return False
+        return True
+
+    if card_type == "enumeration":
+        expected_items = card.get("correct_answer")
+        if (
+            not isinstance(expected_items, list)
+            or len(expected_items) < 2
+            or not all(isinstance(item, str) and item.strip() for item in expected_items)
+        ):
+            print(f"  [Skipped] Card #{index}: enumeration 'correct_answer' must be a list of at least 2 strings.")
+            return False
+        return True
+
+    solution_steps = card.get("solution_steps")
+    if not isinstance(card.get("correct_answer"), str) or not card["correct_answer"].strip():
+        print(f"  [Skipped] Card #{index}: problem 'correct_answer' must be a non-empty final-answer string.")
+        return False
+    if not isinstance(solution_steps, list) or not solution_steps or not all(
+        isinstance(step, str) and step.strip() for step in solution_steps
+    ):
+        print(f"  [Skipped] Card #{index}: problem 'solution_steps' must be a non-empty list of strings.")
         return False
 
     return True
+
+
+def _card_storage_values(card: dict) -> tuple[str, object]:
+    """Translate type-specific LLM fields into the existing database columns."""
+    if card["type"] == "enumeration":
+        expected_items = card["correct_answer"]
+        # `options` is the authoritative JSON list used by the quiz UI. The
+        # non-null legacy correct_answer column keeps the same JSON for
+        # backward-safe storage without a schema migration.
+        return json.dumps(expected_items), expected_items
+    if card["type"] == "problem":
+        final_answer = card["correct_answer"]
+        return final_answer, {
+            "final_answer": final_answer,
+            "solution_steps": card["solution_steps"],
+        }
+    return card["correct_answer"], card["options"]
+
+
+@dataclass(frozen=True)
+class DeckPreparation:
+    selected_files: tuple[str, ...]
+    combined_text: str
+    chunks: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GenerationDependencies:
+    extract_file: Callable[[str], str]
+    create_client: Callable[[], Groq]
+    get_context: Callable[[str, str], str]
+    query_cards: Callable[[Groq, str, str], list[dict]]
+    add_memory: Callable[[str, str, list[str]], None]
+    persist_deck: Callable[[str, str, str, list[NewCard]], int]
+    sleep: Callable[[float], None]
+
+
+def prepare_custom_deck(
+    selected_files: list[str],
+    *,
+    extract_file: Callable[[str], str] = process_module_file_v2,
+    uploads_directory: str = "uploads",
+    report: Callable[[str], None] = print,
+) -> DeckPreparation | None:
+    """Extract selected modules and prepare stable chunks without LLM or storage I/O."""
+
+    report(f"\n[1/4] Processing {len(selected_files)} module(s)...")
+    combined_text = ""
+    for filename in selected_files:
+        file_path = os.path.join(uploads_directory, filename)
+        if not os.path.exists(file_path) and os.path.exists(filename):
+            file_path = filename
+        text = extract_file(file_path)
+        if not text.startswith("Error") and not text.startswith("Unsupported"):
+            combined_text += f"\n\n--- Content from {filename} ---\n\n" + text
+        else:
+            report(f"  [Warning] Skipping {filename}: {text}")
+    if len(combined_text) < 50:
+        report("  [Abort] Not enough valid text extracted to generate meaningful questions.")
+        return None
+    chunks = tuple(_chunk_text(combined_text))
+    report(f"  Extracted {len(combined_text):,} characters from all selected modules.")
+    report(f"\n[2/4] Split into {len(chunks)} chunk(s) (max {MAX_CHUNK_CHARS:,} chars each).")
+    return DeckPreparation(tuple(selected_files), combined_text, chunks)
+
+
+def validate_generated_cards(raw_cards: list[dict], total_questions: int) -> list[dict]:
+    """Trim provider output and retain only cards matching the persisted contract."""
+
+    limited_cards = raw_cards[:total_questions]
+    return [
+        card
+        for index, card in enumerate(limited_cards, start=1)
+        if _validate_card(card, index)
+    ]
+
+
+def persist_valid_cards(
+    *,
+    deck_name: str,
+    subject: str,
+    selected_files: tuple[str, ...],
+    valid_cards: list[dict],
+    persist_deck: Callable[[str, str, str, list[NewCard]], int],
+) -> int:
+    """Build the legacy storage payload then persist it in one transaction."""
+
+    if not valid_cards:
+        raise ValueError("A deck cannot be persisted without valid cards")
+    cards: list[NewCard] = []
+    for card in valid_cards:
+        correct_answer, options = _card_storage_values(card)
+        cards.append(NewCard(card["type"], card["question"], correct_answer, options))
+    return persist_deck(deck_name, ", ".join(selected_files), subject, cards)
+
+
+def default_generation_dependencies() -> GenerationDependencies:
+    return GenerationDependencies(
+        extract_file=process_module_file_v2,
+        create_client=_get_client,
+        get_context=get_historical_context,
+        query_cards=_query_groq,
+        add_memory=add_to_memory,
+        persist_deck=create_deck_with_cards,
+        sleep=time.sleep,
+    )
+
+
+def orchestrate_custom_deck(
+    selected_files: list[str],
+    deck_name: str,
+    subject: str,
+    total_questions: int,
+    question_style: str = "mixed",
+    *,
+    dependencies: GenerationDependencies | None = None,
+    report: Callable[[str], None] = print,
+) -> int | None:
+    """Coordinate extraction, memory, generation, validation, then transactional storage."""
+
+    deps = dependencies or default_generation_dependencies()
+    preparation = prepare_custom_deck(
+        selected_files, extract_file=deps.extract_file, report=report
+    )
+    if preparation is None:
+        return None
+    questions_per_chunk = math.ceil(total_questions / len(preparation.chunks))
+    report(f"\n[3/4] Andy is generating {total_questions} situational questions using '{MODEL_NAME}'...")
+    client = deps.create_client()
+    raw_cards: list[dict] = []
+    for index, chunk in enumerate(preparation.chunks, start=1):
+        report(f"  Chunk {index}/{len(preparation.chunks)} ...")
+        augmented_chunk = chunk + deps.get_context(chunk, subject)
+        raw_cards.extend(deps.query_cards(client, augmented_chunk, get_andy_prompt(questions_per_chunk, question_style)))
+        if index < len(preparation.chunks):
+            deps.sleep(2)
+    deps.add_memory(deck_name, subject, list(preparation.chunks))
+    valid_cards = validate_generated_cards(raw_cards, total_questions)
+    report(f"\n[4/4] Validating and saving to database...")
+    if not valid_cards:
+        report("  [Abort] No valid cards were generated. Deck will not be created.")
+        return None
+    deck_id = persist_valid_cards(
+        deck_name=deck_name,
+        subject=subject,
+        selected_files=preparation.selected_files,
+        valid_cards=valid_cards,
+        persist_deck=deps.persist_deck,
+    )
+    report(f"\n  Deck '{deck_name}' created successfully by Andy.")
+    report(f"  Deck ID       : {deck_id}")
+    report(f"  Cards saved   : {len(valid_cards)}")
+    report(f"  Cards skipped : {min(len(raw_cards), total_questions) - len(valid_cards)}")
+    return deck_id
 
 
 def generate_custom_deck(
@@ -212,97 +439,17 @@ def generate_custom_deck(
     deck_name: str,
     subject: str,
     total_questions: int,
+    question_style: str = "mixed",
 ) -> int | None:
-    """
-    Build a deck from multiple selected files and target a specific question count.
-    Includes persistent memory (RAG) to connect past modules to current ones.
-    """
-    print(f"\n[1/4] Processing {len(selected_files)} module(s)...")
-    combined_text = ""
+    """Compatibility façade for Streamlit; delegates to the injectable orchestrator."""
 
-    for filename in selected_files:
-        file_path = os.path.join("uploads", filename)
-        if not os.path.exists(file_path) and os.path.exists(filename):
-            file_path = filename
-
-        text = process_module_file_v2(file_path)
-        if not text.startswith("Error") and not text.startswith("Unsupported"):
-            combined_text += f"\n\n--- Content from {filename} ---\n\n" + text
-        else:
-            print(f"  [Warning] Skipping {filename}: {text}")
-
-    text_length = len(combined_text)
-    print(f"  Extracted {text_length:,} characters from all selected modules.")
-
-    if text_length < 50:
-        print("  [Abort] Not enough valid text extracted to generate meaningful questions.")
-        return None
-
-    chunks = _chunk_text(combined_text)
-    print(f"\n[2/4] Split into {len(chunks)} chunk(s) (max {MAX_CHUNK_CHARS:,} chars each).")
-
-    questions_per_chunk = math.ceil(total_questions / len(chunks))
-
-    print(f"\n[3/4] Andy is generating {total_questions} situational questions using '{MODEL_NAME}'...")
-    client = _get_client()
-    all_raw_cards: list[dict] = []
-
-    for i, chunk in enumerate(chunks, start=1):
-        print(f"  Chunk {i}/{len(chunks)} ...", end=" ", flush=True)
-        
-        # --- RAG RETRIEVAL STEP ---
-        historical_context = get_historical_context(chunk, subject)
-        augmented_chunk = chunk + historical_context
-        
-        prompt = get_andy_prompt(questions_per_chunk)
-        cards = _query_groq(client, augmented_chunk, system_prompt=prompt)
-        
-        print(f"received {len(cards)} card(s).")
-        all_raw_cards.extend(cards)
-
-        if i < len(chunks):
-            time.sleep(2)
-
-    # --- RAG INGESTION STEP ---
-    add_to_memory(deck_name, subject, chunks)
-
-    all_raw_cards = all_raw_cards[:total_questions]
-    print(f"  Total raw cards finalized for validation: {len(all_raw_cards)}")
-
-    print(f"\n[4/4] Validating and saving to database...")
-
-    valid_cards = [
-        card for i, card in enumerate(all_raw_cards, start=1)
-        if _validate_card(card, i)
-    ]
-
-    if not valid_cards:
-        print("  [Abort] No valid cards were generated. Deck will not be created.")
-        return None
-
-    modules_included_string = ", ".join(selected_files)
-
-    deck_id = create_deck(
-        name=deck_name,
-        modules_included=modules_included_string,
+    return orchestrate_custom_deck(
+        selected_files=selected_files,
+        deck_name=deck_name,
         subject=subject,
+        total_questions=total_questions,
+        question_style=question_style,
     )
-
-    for card in valid_cards:
-        add_card(
-            deck_id=deck_id,
-            card_type=card["type"],
-            question=card["question"],
-            correct_answer=card["correct_answer"],
-            options=card["options"],
-        )
-
-    print(f"\n  Deck '{deck_name}' created successfully by Andy.")
-    print(f"  Deck ID       : {deck_id}")
-    print(f"  Cards saved   : {len(valid_cards)}")
-    print(f"  Cards skipped : {len(all_raw_cards) - len(valid_cards)}")
-
-    return deck_id
 
 
 # ── Core public function ──────────────────────────────────────────────────────
@@ -311,6 +458,7 @@ def generate_deck_from_file(
     file_path: str,
     deck_name: str,
     subject: str,
+    question_style: str = "mixed",
 ) -> int | None:
     """
     Full pipeline for a single file. Includes RAG context retrieval and insertion.
@@ -343,7 +491,7 @@ def generate_deck_from_file(
         historical_context = get_historical_context(chunk, subject)
         augmented_chunk = chunk + historical_context
         
-        cards = _query_groq(client, augmented_chunk)
+        cards = _query_groq(client, augmented_chunk, system_prompt=get_andy_prompt(1, question_style))
         
         print(f"received {len(cards)} card(s).")
         all_raw_cards.extend(cards)
@@ -372,12 +520,13 @@ def generate_deck_from_file(
     )
 
     for card in valid_cards:
+        correct_answer, options = _card_storage_values(card)
         add_card(
             deck_id=deck_id,
             card_type=card["type"],
             question=card["question"],
-            correct_answer=card["correct_answer"],
-            options=card["options"],
+            correct_answer=correct_answer,
+            options=options,
         )
 
     print(f"\n  Deck '{deck_name}' created successfully.")

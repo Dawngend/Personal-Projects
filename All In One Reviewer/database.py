@@ -1,82 +1,79 @@
-import sqlite3
-import json
-import os
+"""Legacy tuple-returning database façade backed by typed Phase 1 repositories."""
 
-# Save the db inside the Database subfolder you created
-DB_PATH = os.path.join("Database", "reviewer.db")
+from __future__ import annotations
 
-def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS decks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            modules_included TEXT NOT NULL,
-            subject TEXT NOT NULL
+from pathlib import Path
+from typing import Any, Iterable
+
+from repositories import CardRepository, DeckRepository, NewCard
+
+
+# Preserve the legacy relative path and function signatures used by Streamlit.
+DB_PATH = str(Path("Database") / "reviewer.db")
+
+
+def _decks() -> DeckRepository:
+    return DeckRepository(DB_PATH)
+
+
+def _cards() -> CardRepository:
+    return CardRepository(DB_PATH)
+
+
+def init_db() -> None:
+    # Opening either repository initializes the unchanged tables on the same file.
+    _decks().list()
+
+
+def create_deck(name: str, modules_included: str, subject: str) -> int:
+    return _decks().create(name, modules_included, subject).id
+
+
+def add_card(
+    deck_id: int | str,
+    card_type: str,
+    question: str,
+    correct_answer: str,
+    options: Any = None,
+) -> None:
+    _cards().add(int(deck_id), NewCard(card_type, question, correct_answer, options))
+
+
+def create_deck_with_cards(
+    name: str,
+    modules_included: str,
+    subject: str,
+    cards: Iterable[NewCard],
+) -> int:
+    """Phase 1 transaction API; creates no deck until valid cards are supplied."""
+
+    return _decks().create_with_cards(name, modules_included, subject, cards).id
+
+
+def get_decks() -> list[tuple[int, str, str, str]]:
+    return [
+        (deck.id, deck.name, deck.modules_included, deck.subject)
+        for deck in _decks().list()
+    ]
+
+
+def get_cards_for_deck(deck_id: int | str) -> list[tuple[int, int, str, str, str, str | None, int]]:
+    return [
+        (
+            card.id,
+            card.deck_id,
+            card.card_type,
+            card.question,
+            card.correct_answer,
+            card.options,
+            card.times_missed,
         )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS cards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            deck_id INTEGER,
-            type TEXT NOT NULL,
-            question TEXT NOT NULL,
-            correct_answer TEXT NOT NULL,
-            options TEXT,
-            times_missed INTEGER DEFAULT 0,
-            FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+        for card in _cards().list_for_deck(int(deck_id))
+    ]
 
-def create_deck(name, modules_included, subject):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO decks (name, modules_included, subject) VALUES (?, ?, ?)", 
-                   (name, modules_included, subject))
-    deck_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return deck_id
 
-def add_card(deck_id, card_type, question, correct_answer, options=None):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    options_json = json.dumps(options) if options else None
-    cursor.execute("""
-        INSERT INTO cards (deck_id, type, question, correct_answer, options)
-        VALUES (?, ?, ?, ?, ?)
-    """, (deck_id, card_type, question, correct_answer, options_json))
-    conn.commit()
-    conn.close()
+def update_card_miss_count(card_id: int | str, increment: int = 1) -> None:
+    _cards().increment_miss_count(int(card_id), increment)
 
-def get_decks():
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM decks")
-    decks = cursor.fetchall()
-    conn.close()
-    return decks
-
-def get_cards_for_deck(deck_id):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM cards WHERE deck_id = ?", (deck_id,))
-    cards = cursor.fetchall()
-    conn.close()
-    return cards
-
-def update_card_miss_count(card_id, increment=1):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE cards SET times_missed = times_missed + ? WHERE id = ?", (increment, card_id))
-    conn.commit()
-    conn.close()
 
 init_db()
