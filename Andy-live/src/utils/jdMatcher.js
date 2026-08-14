@@ -1,73 +1,57 @@
 const fs = require('fs');
 const path = require('path');
 
-const RESUMES_DIR = 'D:/Resumes';
+// Andy Brain vault is the canonical, actively-maintained source. D:\Resumes
+// mirrors it but also still holds ~17 retired per-company tailored resumes
+// that were explicitly marked Rejected once the strategy consolidated to two
+// masters (2026-08-13) - listing that whole directory risked auto-selecting
+// a stale/rejected variant for personalization.
+const VAULT_CAREER_DIR = 'D:/Andy_Brain/01_Career_and_Resume';
+const PERSONAL_CONTEXT_PATH = path.join(VAULT_CAREER_DIR, 'Dawn_Personal_Context.md');
+
+const MASTER_RESUMES = [
+    { fileName: 'Dawn_Andrei_Pamesa_Resume.md', displayName: 'General (AI/ML/Data Science)' },
+    { fileName: 'Dawn_Andrei_Pamesa_Data_Engineering_Backend_Resume.md', displayName: 'Data Engineering / Backend' }
+];
 
 /**
- * Lists all available markdown resumes in D:\Resumes
+ * Lists the two current active master resumes from the Andy Brain vault.
+ * Deliberately not a directory listing - see MASTER_RESUMES comment above.
  */
 function getAvailableResumes() {
-    try {
-        if (!fs.existsSync(RESUMES_DIR)) return [];
-        const files = fs.readdirSync(RESUMES_DIR);
-        return files
-            .filter(f => f.endsWith('.md') && f !== 'SKILL.md' && f !== 'README.md')
-            .map(f => ({
-                fileName: f,
-                filePath: path.join(RESUMES_DIR, f),
-                displayName: f.replace('Dawn_Andrei_Pamesa_', '').replace('_Resume.md', '').replace(/_/g, ' ')
-            }));
-    } catch (err) {
-        console.error('[jdMatcher] Error listing resumes:', err);
-        return [];
-    }
+    return MASTER_RESUMES
+        .map(r => ({ ...r, filePath: path.join(VAULT_CAREER_DIR, r.fileName) }))
+        .filter(r => fs.existsSync(r.filePath));
 }
 
 /**
- * Scans resumes to auto-detect the best matching resume based on Job Description text keywords
+ * Picks between the two active masters based on Job Description keywords.
+ * Backend/data-engineering signal -> the backend master; anything else
+ * (including plain ML/AI/Data Science signal) -> the general master, which
+ * is the deliberate default per the resume strategy.
  */
 function autoDetectResume(jdText) {
     const resumes = getAvailableResumes();
     if (resumes.length === 0) return null;
 
     const jdLower = jdText.toLowerCase();
-    let bestMatch = resumes[0];
-    let maxScore = -1;
-
-    for (const res of resumes) {
-        let score = 0;
-        const nameLower = res.fileName.toLowerCase();
-        
-        if (jdLower.includes('machine learning') || jdLower.includes('mle') || jdLower.includes('llm')) {
-            if (nameLower.includes('mle') || nameLower.includes('python_llm')) score += 5;
-        }
-        if (jdLower.includes('data scientist') || jdLower.includes('fraud') || jdLower.includes('kobold')) {
-            if (nameLower.includes('data_scientist') || nameLower.includes('fraud')) score += 5;
-        }
-        if (jdLower.includes('backend') || jdLower.includes('architect') || jdLower.includes('database')) {
-            if (nameLower.includes('dba') || nameLower.includes('developer')) score += 5;
-        }
-        if (jdLower.includes('bvnk') || jdLower.includes('qa')) {
-            if (nameLower.includes('bvnk') || nameLower.includes('qa')) score += 5;
-        }
-
-        if (score > maxScore) {
-            maxScore = score;
-            bestMatch = res;
-        }
+    const backendSignal = /\b(backend|back-end|database|data engineer|data engineering|infrastructure|devops|distributed systems|architect)\b/;
+    if (backendSignal.test(jdLower)) {
+        const backend = resumes.find(r => r.fileName.includes('Data_Engineering_Backend'));
+        if (backend) return backend;
     }
 
-    return bestMatch;
+    return resumes.find(r => r.fileName === 'Dawn_Andrei_Pamesa_Resume.md') || resumes[0];
 }
 
 /**
- * Builds the personalized system prompt integrating Global SKILL.md + Selected Target Resume + Job Description
+ * Builds the personalized system prompt integrating the vault's canonical
+ * Dawn_Personal_Context.md + Selected Target Resume + Job Description.
  */
 function buildPersonalizedPrompt(jdText, selectedResumePath = null, role = 'default') {
     let globalSkill = '';
-    const skillPath = path.join(RESUMES_DIR, 'SKILL.md');
-    if (fs.existsSync(skillPath)) {
-        globalSkill = fs.readFileSync(skillPath, 'utf8');
+    if (fs.existsSync(PERSONAL_CONTEXT_PATH)) {
+        globalSkill = fs.readFileSync(PERSONAL_CONTEXT_PATH, 'utf8');
     }
 
     let targetResumeContent = '';
