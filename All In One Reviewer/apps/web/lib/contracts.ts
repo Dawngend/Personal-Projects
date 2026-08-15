@@ -45,6 +45,38 @@ const ProblemCard = z.object({ id: z.number(), type: z.literal("problem"), quest
 export const QuizCardSchema = z.discriminatedUnion("type", [MultipleChoiceCard, EnumerationCard, ProblemCard]);
 export type QuizCard = z.infer<typeof QuizCardSchema>;
 
+export const DeckDetailSchema = DeckSchema.extend({ cards: z.array(QuizCardSchema).nullable().optional() });
+export type DeckDetail = z.infer<typeof DeckDetailSchema>;
+
+export const QuizSessionSchema = z.object({
+  id: z.string().startsWith("quiz_"),
+  deck: z.object({ id: z.number().int(), name: z.string() }),
+  totalQuestions: z.number().int().nonnegative(),
+  currentIndex: z.number().int().nonnegative(),
+  card: QuizCardSchema.nullable(),
+  complete: z.boolean(),
+}).strict();
+export type QuizSession = z.infer<typeof QuizSessionSchema>;
+
+/** Answer-key fields exist only in post-grade or explicit reveal responses. */
+export const GradeResultSchema = z.object({
+  correct: z.boolean(), complete: z.boolean(), feedback: z.string(),
+  caughtItems: z.array(z.string()).nullable().optional(),
+  missedItems: z.array(z.string()).nullable().optional(),
+  expectedAnswer: z.string().nullable().optional(),
+  solutionSteps: z.array(z.string()).nullable().optional(),
+}).strict();
+export type GradeResult = z.infer<typeof GradeResultSchema>;
+
+export const RevealResultSchema = z.object({ expectedAnswer: z.string(), solutionSteps: z.array(z.string()) }).strict();
+export type RevealResult = z.infer<typeof RevealResultSchema>;
+
+export const SessionSummarySchema = z.object({
+  totalQuestions: z.number().int().nonnegative(), attempted: z.number().int().nonnegative(), correct: z.number().int().nonnegative(),
+  missedCardIds: z.array(z.number().int()), revealedCardIds: z.array(z.number().int()), complete: z.boolean(),
+}).strict();
+export type SessionSummary = z.infer<typeof SessionSummarySchema>;
+
 export const GenerationRequestSchema = z.object({
   deckName: z.string().trim().min(2, "Name the deck."),
   subject: z.string().trim().min(2, "Add a subject."),

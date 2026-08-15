@@ -47,7 +47,7 @@ export function DeckWorkshop() {
         <section><div className={styles.sectionHead}><p className="eyebrow">02 · Deck brief</p><h2>Frame the review</h2><p>Give the material a useful name, subject, and deliberate amount of practice.</p></div><DeckBriefForm register={form.register} errors={errors} /></section>
         <section><div className={styles.sectionHead}><p className="eyebrow">03 · Question style</p><h2>Set the recall mode</h2><p>Mixed is the default: exact choices, full enumerations, and final-answer problems.</p></div><QuestionStyleField register={form.register} /></section>
         <section className={styles.generate}><div><p className="eyebrow">04 · Generate</p><h2>Make this deck</h2><p>{selectedModuleIds.length ? `${selectedModuleIds.length} selected module${selectedModuleIds.length === 1 ? "" : "s"} will be sent to the generation worker.` : "Choose one or more modules before generating."}</p></div><button className={styles.generateButton} type="submit" disabled={generation.isPending || job?.status === "running"}>{generation.isPending ? "Queueing generation…" : job?.status === "running" ? "Generation in progress" : "Generate deck →"}</button></section>
-        {generation.isError && <p className="form-error">{generation.error.message}</p>}{job?.status === "complete" && <p className={styles.complete}>Deck ready. It is now in your <Link href="/">study library</Link>.</p>}
+        {generation.isError && <p className="form-error">{generation.error.message}</p>}{job?.status === "complete" && job.deckId && <p className={styles.complete}>Deck ready. <Link href={`/decks/${job.deckId}`}>Open this deck</Link> to begin studying.</p>}
       </form>
     </div>
   </main>;

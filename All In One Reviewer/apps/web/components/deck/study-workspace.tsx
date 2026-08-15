@@ -34,7 +34,7 @@ export function StudyWorkspace() {
         {!decks.isLoading && !decks.isError && decks.data?.length === 0 && (
           <div className={styles.empty}><span aria-hidden="true">✣</span><h3>No decks yet</h3><p>Upload PDFs or slide decks, choose a question style, and generate your first reviewer.</p><Link href="/decks/new">Start with materials</Link></div>
         )}
-        {Object.entries(grouped).map(([subject, subjectDecks]) => <div className={styles.subject} key={subject}><h3>{subject}</h3><div className={styles.deckGrid}>{subjectDecks?.map((deck) => <article className={styles.deck} key={deck.id}><p className={styles.mono}>DECK {String(deck.id).padStart(3, "0")}</p><h4>{deck.name}</h4><p>{deck.cardCount} cards · {deck.totalMisses} recorded misses</p><div>{Object.entries(deck.questionTypes).filter(([, count]) => count).map(([type, count]) => <span key={type}>{type.replace("_", " ")} {count}</span>)}</div></article>)}</div></div>)}
+        {Object.entries(grouped).map(([subject, subjectDecks]) => <div className={styles.subject} key={subject}><h3>{subject}</h3><div className={styles.deckGrid}>{subjectDecks?.map((deck) => <article className={styles.deck} key={deck.id}><p className={styles.mono}>DECK {String(deck.id).padStart(3, "0")}</p><h4><Link href={`/decks/${deck.id}`}>{deck.name}</Link></h4><p>{deck.cardCount} cards · {deck.totalMisses} recorded misses</p><div>{Object.entries(deck.questionTypes).filter(([, count]) => count).map(([type, count]) => <span key={type}>{type.replace("_", " ")} {count}</span>)}</div></article>)}</div></div>)}
       </section>
     </main>
   );

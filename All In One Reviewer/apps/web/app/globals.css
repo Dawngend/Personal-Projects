@@ -38,6 +38,8 @@ body {
 button, input, select { font: inherit; }
 button { cursor: pointer; }
 
+.math-prompt { white-space: pre-wrap; }.math-display { display: block; margin: .5em 0; overflow-x: auto; }.math-inline { display: inline; }.route-error { width: min(720px, calc(100% - 40px)); margin: 0 auto; padding: 120px 0; }.route-error h1 { margin: 9px 0 14px; font-family: var(--font-display); font-size: clamp(2.6rem, 6vw, 4.8rem); letter-spacing: -.075em; line-height: .9; }.route-error p:not(.eyebrow) { color: #5e5867; line-height: 1.5; }.route-error button { border: 1px solid var(--graphite); background: var(--graphite); color: var(--mist-paper); padding: 12px 16px; font-weight: 700; }.route-error a { display: inline-block; margin-left: 14px; color: var(--orchid-ink); font-weight: 700; }
+
 :focus-visible { outline: 3px solid var(--signal-amber); outline-offset: 3px; }
 
 .eyebrow { margin: 0; color: var(--orchid-ink); font-family: var(--font-mono); font-size: .68rem; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; }
