@@ -11,5 +11,17 @@ const styles: { value: QuestionStyle; title: string; copy: string }[] = [
 ];
 
 export function QuestionStyleField({ register }: { register: UseFormRegister<GenerationRequest> }) {
-  return <div className="style-grid">{styles.map((style) => <label key={style.value} className="style-option"><input type="radio" value={style.value} {...register("questionStyle")} /><span><strong>{style.title}</strong><small>{style.copy}</small></span></label>)}</div>;
+  return (
+    <div className="style-grid">
+      {styles.map((style) => (
+        <label key={style.value} className="style-option">
+          <input type="radio" value={style.value} {...register("questionStyle")} />
+          <span>
+            <strong>{style.title}</strong>
+            <small>{style.copy}</small>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
 }
