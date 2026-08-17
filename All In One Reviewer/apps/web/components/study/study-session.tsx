@@ -31,7 +31,9 @@ function SessionProgress({
   reveal: RevealResult | null;
 }) {
   const [symbol, label] = typeMeta[card.type];
-  const state = reveal ? "revealed" : grade?.correct ? "complete" : grade ? "missed" : "current";
+  // Use grade.complete (server-owned resolved state), not grade.correct (this submission only) --
+  // otherwise a stray resubmit on an already-solved card renders it as missed.
+  const state = reveal ? "revealed" : grade?.complete ? "complete" : grade ? "missed" : "current";
   return (
     <aside className={styles.gutter} aria-label="Session structure">
       <p className={styles.gutterTitle}>Reasoning trace</p>
@@ -94,7 +96,7 @@ function Feedback({ grade, reveal }: { grade: GradeResult | null; reveal: Reveal
   if (!grade && !reveal) return null;
   return (
     <section
-      className={`${styles.feedback} ${grade?.correct ? styles.feedbackCorrect : ""}`}
+      className={`${styles.feedback} ${grade?.complete ? styles.feedbackCorrect : ""}`}
       aria-live="polite"
     >
       <p>
@@ -212,12 +214,14 @@ function EnumerationQuestion({
   onChange,
   onCheck,
   pending,
+  resolved,
 }: {
   card: Extract<QuizCard, { type: "enumeration" }>;
   value: string;
   onChange: (value: string) => void;
   onCheck: () => void;
   pending: boolean;
+  resolved: boolean;
 }) {
   return (
     <div className={styles.answerArea}>
@@ -234,7 +238,7 @@ function EnumerationQuestion({
         placeholder="Write everything you can recall…"
         rows={8}
       />
-      <button type="button" onClick={onCheck} disabled={pending || !value.trim()}>
+      <button type="button" onClick={onCheck} disabled={pending || resolved || !value.trim()}>
         Check answer
       </button>
     </div>
@@ -290,7 +294,7 @@ function ProblemQuestion({
         />
       </div>
       <div className={styles.problemActions}>
-        <button type="button" onClick={onCheck} disabled={pending || !value.trim()}>
+        <button type="button" onClick={onCheck} disabled={pending || resolved || !value.trim()}>
           Check answer
         </button>
         <button
@@ -485,6 +489,7 @@ export function StudySession({ sessionId }: { sessionId: string }) {
               onChange={saveAnswer}
               onCheck={() => submit.mutate(answer)}
               pending={submit.isPending}
+              resolved={resolved}
             />
           )}
           {card.type === "problem" && (

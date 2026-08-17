@@ -272,8 +272,16 @@ class QuizService:
             expected_answer, steps = problem_payload(decode_card_options(card.options), card.correct_answer)
             correct = grade_problem_answer(value, expected_answer)
         self.repository.record_attempt(session_id, card_id, correct)
+        attempt = self.repository.attempt_for_current_card(session_id, card_id)
+        complete = bool(attempt and (attempt["status"] == "correct" or attempt["revealed"]))
+        if correct:
+            feedback = "Correct."
+        elif complete:
+            feedback = "This card is already resolved; your earlier result stands."
+        else:
+            feedback = "Not correct yet; try again or reveal the worked solution."
         return GradeResult(
-            correct=correct, complete=correct, feedback="Correct." if correct else "Not correct yet; try again or reveal the worked solution.",
+            correct=correct, complete=complete, feedback=feedback,
             caught_items=caught, missed_items=missed, expected_answer=expected_answer, solution_steps=steps if correct else None,
         )
 

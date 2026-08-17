@@ -129,6 +129,32 @@ class Phase2ApiTests(unittest.TestCase):
         from repositories import CardRepository
         self.assertEqual(CardRepository(self.settings.database_path).get(card_id).times_missed, 1)
 
+    def test_resubmitting_a_solved_card_cannot_un_resolve_it(self):
+        deck = DeckRepository(self.settings.database_path).create_with_cards(
+            "Doubles", "d.pdf", "Math",
+            [__import__("repositories").NewCard("multiple_choice", "2+2?", "4", ["3", "4"])],
+        )
+        session = self.client.post("/api/v1/quiz-sessions", json={"deckId": deck.id, "mode": "all"}).json()
+        session_id, card_id = session["id"], session["card"]["id"]
+        answer_url = f"/api/v1/quiz-sessions/{session_id}/answers"
+        first = self.client.post(answer_url, json={"cardId": card_id, "answer": {"type": "multiple_choice", "value": "4"}})
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertTrue(first.json()["correct"])
+        self.assertTrue(first.json()["complete"])
+        # A stray double-click / retry race lands a wrong answer on an already-solved card.
+        second = self.client.post(answer_url, json={"cardId": card_id, "answer": {"type": "multiple_choice", "value": "3"}})
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertFalse(second.json()["correct"])
+        self.assertTrue(second.json()["complete"], "a solved card must stay resolved")
+        # advance must not be blocked by card_not_resolved, and the miss must not be counted.
+        advanced = self.client.post(f"/api/v1/quiz-sessions/{session_id}/advance")
+        self.assertEqual(advanced.status_code, 200, advanced.text)
+        from repositories import CardRepository
+        self.assertEqual(CardRepository(self.settings.database_path).get(card_id).times_missed, 0)
+        summary = self.client.get(f"/api/v1/quiz-sessions/{session_id}/summary").json()
+        self.assertEqual(summary["correct"], 1)
+        self.assertEqual(summary["missedCardIds"], [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

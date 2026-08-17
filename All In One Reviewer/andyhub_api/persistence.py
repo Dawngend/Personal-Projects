@@ -167,12 +167,21 @@ class ApiRepository:
         return dict(updated)
 
     def record_attempt(self, session_id: str, card_id: int, correct: bool, *, revealed: bool = False) -> bool:
-        """Record one cumulative miss per card/session and return whether it was newly recorded."""
+        """Record one cumulative miss per card/session and return whether it was newly recorded.
+
+        A resolved attempt (answered correctly or revealed) is frozen: a later submission for the
+        same card cannot downgrade its status, inflate wrong_count, or bump cards.times_missed.
+        Without this a double-click or retry race un-resolves a solved card, which then blocks
+        advance with card_not_resolved and permanently skews the cross-session times_missed count.
+        """
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT wrong_count FROM quiz_attempts WHERE session_id = ? AND card_id = ?", (session_id, card_id)
+                "SELECT status, wrong_count, revealed FROM quiz_attempts WHERE session_id = ? AND card_id = ?",
+                (session_id, card_id),
             ).fetchone()
-            first_miss = not correct and (row is None or row[0] == 0)
+            if row is not None and (row[0] == "correct" or row[2]):
+                return False
+            first_miss = not correct and (row is None or row[1] == 0)
             if row is None:
                 connection.execute(
                     "INSERT INTO quiz_attempts (session_id, card_id, status, wrong_count, revealed) VALUES (?, ?, ?, ?, ?)",
