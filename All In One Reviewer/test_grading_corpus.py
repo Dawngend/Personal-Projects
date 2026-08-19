@@ -65,19 +65,9 @@ NON_EQUIVALENT = [
 
 # Known gaps, measured 2026-08-19 against commit bbb22a1.
 KNOWN_GAPS = {
-    "eq_06": "MATLAB semicolon row separator is not parsed",
-    "eq_08": "space-separated vector elements are not parsed",
-    "eq_11": "answer label with a function call, det(A) =, is not stripped",
-    "eq_14": "implicit multiplication before a radical, 3sqrt(2), is not parsed",
     "eq_18": "labelled element inside a set literal is not parsed",
     "eq_20": "needs the symbolic tier; sympy is not installed",
     "eq_21": "needs the symbolic tier; sympy is not installed",
-    "eq_22": "answer label rank = is not stripped",
-    "eq_25": "complex numbers are not parsed at all",
-    "eq_26": "complex numbers with an implicit unit coefficient are not parsed",
-    "eq_27": "complex number with a radical imaginary part is not parsed",
-    "eq_28": "augmented-matrix pipe separator is not parsed",
-    "eq_29": "answer label with a superscript, A^T =, is not stripped",
     "eq_30": "component-wise assignment is not read as a tuple",
 }
 

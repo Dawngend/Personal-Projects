@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 
 ComparisonTier = Literal["exact", "numeric", "structured", "symbolic", "fail"]
+Scalar = float | complex
 
 
 class ProblemAnswerResult(int):
@@ -30,7 +31,7 @@ class ProblemAnswerResult(int):
 @dataclass(frozen=True)
 class _StructuredValue:
     kind: Literal["sequence", "set"]
-    items: tuple[float | _StructuredValue, ...]
+    items: tuple[Scalar | _StructuredValue, ...]
 
 
 def decode_card_options(raw_options: str | None) -> Any:
@@ -118,27 +119,43 @@ def _contains_complete_phrase(normalized_answer: str, expected_item: str) -> boo
 
 
 def _strip_answer_label(value: str) -> str:
-    match = re.fullmatch(r"(?:[a-z]|answer)\s*=\s*(.+)", value)
+    identifier = r"[a-z][a-z0-9_]*"
+    label = rf"(?:answer|{identifier}\([^()]*\)|{identifier}(?:\^[a-z0-9]+|[ᵀᵗ])?)"
+    match = re.fullmatch(rf"{label}\s*=\s*(.+)", value)
     return match.group(1) if match else value
 
 
-def _parse_scalar(value: str) -> float | None:
+def _parse_scalar(value: str) -> Scalar | None:
     normalized = value.replace("−", "-").replace(",", "").strip()
     if not normalized:
         return None
+    complex_value = _parse_complex(normalized)
+    if complex_value is not None:
+        return complex_value
+    return _parse_real_scalar(normalized)
+
+
+def _parse_real_scalar(normalized: str) -> float | None:
     if normalized.endswith("%"):
-        percentage = _parse_scalar(normalized[:-1])
+        percentage = _parse_real_scalar(normalized[:-1])
         return percentage / 100 if percentage is not None else None
     fraction = re.fullmatch(r"(.+?)\s*/\s*(.+)", normalized)
     if fraction:
-        numerator = _parse_scalar(fraction.group(1))
-        denominator = _parse_scalar(fraction.group(2))
+        numerator = _parse_real_scalar(fraction.group(1))
+        denominator = _parse_real_scalar(fraction.group(2))
         if numerator is None or denominator in (None, 0):
             return None
         return numerator / denominator
+    radical_product = re.fullmatch(r"(.+?)\s*sqrt\s*\(\s*(.+)\s*\)", normalized)
+    if radical_product:
+        coefficient = _parse_real_scalar(radical_product.group(1))
+        radicand = _parse_real_scalar(radical_product.group(2))
+        if coefficient is None or radicand is None or radicand < 0:
+            return None
+        return coefficient * math.sqrt(radicand)
     square_root = re.fullmatch(r"sqrt\s*\(\s*(.+)\s*\)", normalized)
     if square_root:
-        radicand = _parse_scalar(square_root.group(1))
+        radicand = _parse_real_scalar(square_root.group(1))
         return math.sqrt(radicand) if radicand is not None and radicand >= 0 else None
     try:
         result = float(normalized)
@@ -147,14 +164,45 @@ def _parse_scalar(value: str) -> float | None:
     return result if math.isfinite(result) else None
 
 
+def _parse_complex(value: str) -> complex | None:
+    compact = re.sub(r"\s+", "", value)
+    if compact in {"i", "+i"}:
+        return complex(0, 1)
+    if compact == "-i":
+        return complex(0, -1)
+
+    suffix = re.fullmatch(r"(.+?)([+-])(.*)i", compact)
+    if suffix:
+        real = _parse_real_scalar(suffix.group(1))
+        imaginary_text = suffix.group(3) or "1"
+        imaginary = _parse_real_scalar(imaginary_text)
+        if real is None or imaginary is None:
+            return None
+        return complex(real, imaginary if suffix.group(2) == "+" else -imaginary)
+
+    prefix = re.fullmatch(r"(.+?)([+-])i(.+)", compact)
+    if prefix:
+        real = _parse_real_scalar(prefix.group(1))
+        imaginary = _parse_real_scalar(prefix.group(3))
+        if real is None or imaginary is None:
+            return None
+        return complex(real, imaginary if prefix.group(2) == "+" else -imaginary)
+    return None
+
+
 def _numbers_close(
-    left: float,
-    right: float,
+    left: Scalar,
+    right: Scalar,
     tolerance: float,
     left_text: str,
     right_text: str,
 ) -> bool:
-    rounding_tolerance = max(_display_resolution(left_text), _display_resolution(right_text)) / 2
+    resolutions = [
+        resolution
+        for resolution in (_display_resolution(left_text), _display_resolution(right_text))
+        if resolution > 0
+    ]
+    rounding_tolerance = min(resolutions) / 2 if resolutions else 0.0
     return abs(left - right) <= max(tolerance, rounding_tolerance)
 
 
@@ -163,11 +211,22 @@ def _display_resolution(value: str) -> float:
     if normalized.endswith("%"):
         return _display_resolution(normalized[:-1]) / 100
     match = re.fullmatch(r"[+-]?(\d+)(?:\.(\d*))?(?:e([+-]?\d+))?", normalized)
-    if not match:
+    if match is not None:
+        decimal_places = len(match.group(2) or "")
+        exponent = int(match.group(3) or "0")
+        return 10.0 ** (exponent - decimal_places)
+    if "i" not in normalized:
         return 0.0
-    decimal_places = len(match.group(2) or "")
-    exponent = int(match.group(3) or "0")
-    return 10.0 ** (exponent - decimal_places)
+    numeric_tokens = re.findall(r"(?:\d+\.\d*|\.\d+)(?:e[+-]?\d+)?", normalized)
+    resolutions: list[float] = []
+    for token in numeric_tokens:
+        match = re.fullmatch(r"(?:\d+)?\.(\d*)(?:e([+-]?\d+))?", token)
+        if match is None:
+            continue
+        decimal_places = len(match.group(1) or "")
+        exponent = int(match.group(2) or "0")
+        resolutions.append(10.0 ** (exponent - decimal_places))
+    return min(resolutions, default=0.0)
 
 
 def _parse_structured(value: str) -> _StructuredValue | None:
@@ -180,10 +239,29 @@ def _parse_structured(value: str) -> _StructuredValue | None:
     if closing is None or stripped[-1] != closing:
         return None
     inner = stripped[1:-1].strip()
-    parts = _split_top_level(inner)
+    rows = _split_top_level(inner, separators=";")
+    if rows is None:
+        return None
+    if opening == "[" and len(rows) > 1:
+        parsed_rows = tuple(_parse_sequence(row) for row in rows)
+        if any(row is None for row in parsed_rows):
+            return None
+        return _StructuredValue("sequence", parsed_rows)
+    sequence = _parse_sequence(inner)
+    if sequence is None:
+        return None
+    return _StructuredValue("set" if opening == "{" else "sequence", sequence.items)
+
+
+def _parse_sequence(value: str) -> _StructuredValue | None:
+    parts = _split_top_level(value, separators=",|")
     if parts is None:
         return None
-    items: list[float | _StructuredValue] = []
+    if len(parts) == 1:
+        spaced_parts = _split_top_level_whitespace(value)
+        if spaced_parts is not None and len(spaced_parts) > 1:
+            parts = spaced_parts
+    items: list[Scalar | _StructuredValue] = []
     for part in parts:
         nested = _parse_structured(part)
         if nested is not None:
@@ -193,10 +271,10 @@ def _parse_structured(value: str) -> _StructuredValue | None:
         if scalar is None:
             return None
         items.append(scalar)
-    return _StructuredValue("set" if opening == "{" else "sequence", tuple(items))
+    return _StructuredValue("sequence", tuple(items))
 
 
-def _split_top_level(value: str) -> list[str] | None:
+def _split_top_level(value: str, *, separators: str = ",") -> list[str] | None:
     if not value:
         return []
     opening = {"[", "(", "<", "{"}
@@ -210,7 +288,7 @@ def _split_top_level(value: str) -> list[str] | None:
         elif character in closing:
             if not stack or stack.pop() != closing[character]:
                 return None
-        elif character == "," and not stack:
+        elif character in separators and not stack:
             part = value[start:index].strip()
             if not part:
                 return None
@@ -222,10 +300,35 @@ def _split_top_level(value: str) -> list[str] | None:
     return parts + [final_part] if final_part else None
 
 
+def _split_top_level_whitespace(value: str) -> list[str] | None:
+    opening = {"[", "(", "<", "{"}
+    closing = {"]": "[", ")": "(", ">": "<", "}": "{"}
+    stack: list[str] = []
+    parts: list[str] = []
+    start = 0
+    for index, character in enumerate(value):
+        if character in opening:
+            stack.append(character)
+        elif character in closing:
+            if not stack or stack.pop() != closing[character]:
+                return None
+        elif character.isspace() and not stack:
+            part = value[start:index].strip()
+            if part:
+                parts.append(part)
+            start = index + 1
+    if stack:
+        return None
+    final_part = value[start:].strip()
+    if final_part:
+        parts.append(final_part)
+    return parts or None
+
+
 def _structured_equal(
-    left: float | _StructuredValue, right: float | _StructuredValue, tolerance: float
+    left: Scalar | _StructuredValue, right: Scalar | _StructuredValue, tolerance: float
 ) -> bool:
-    if isinstance(left, float) and isinstance(right, float):
+    if isinstance(left, (float, complex)) and isinstance(right, (float, complex)):
         return abs(left - right) <= tolerance
     if not isinstance(left, _StructuredValue) or not isinstance(right, _StructuredValue):
         return False
