@@ -67,3 +67,34 @@ def test_enumeration_accepts_complete_phrase_boundaries() -> None:
 
     assert caught == ["row reduction", "rank"]
     assert missed == []
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("{eigenvalue = 5, 1}", "{1, 5}"),
+        ("x = 1, y = 2, z = 3", "(1, 2, 3)"),
+        ("t(1, -1, 0)", "(t, -t, 0)"),
+        ("s(2, 4) + t(1, 1)", "(2s+t, 4s+t)"),
+        ("2*u(1, 3) - v(2, 1)", "(2u-2v, 6u-v)"),
+    ],
+)
+def test_problem_answer_accepts_general_labelled_and_symbolic_vectors(
+    answer: str, expected: str
+) -> None:
+    assert grade_problem_answer(answer, expected)
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"),
+    [
+        ("x = 1, y = 3", "(1, 2)"),
+        ("t(1, -1, 0)", "(t, t, 0)"),
+        ("s(2, 4) + t(1, 1)", "(2s+t, 4s-t)"),
+        ("u(1, 2)", "(u, 2u, 0)"),
+    ],
+)
+def test_problem_answer_rejects_distinct_labelled_and_symbolic_vectors(
+    answer: str, expected: str
+) -> None:
+    assert not grade_problem_answer(answer, expected)

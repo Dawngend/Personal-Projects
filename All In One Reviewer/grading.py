@@ -82,8 +82,12 @@ def grade_problem_answer(
             return ProblemAnswerResult("numeric")
         return ProblemAnswerResult("fail")
 
-    structured_answer = _parse_structured(comparable_answer)
-    structured_expected = _parse_structured(comparable_expected)
+    structured_answer = _parse_structured(comparable_answer) or _parse_assignment_sequence(
+        normalized_answer
+    )
+    structured_expected = _parse_structured(comparable_expected) or _parse_assignment_sequence(
+        normalized_expected
+    )
     if structured_answer is not None and structured_expected is not None:
         if _structured_equal(structured_answer, structured_expected, tolerance):
             return ProblemAnswerResult("structured")
@@ -263,6 +267,7 @@ def _parse_sequence(value: str) -> _StructuredValue | None:
             parts = spaced_parts
     items: list[Scalar | _StructuredValue] = []
     for part in parts:
+        part = _strip_answer_label(part)
         nested = _parse_structured(part)
         if nested is not None:
             items.append(nested)
@@ -272,6 +277,21 @@ def _parse_sequence(value: str) -> _StructuredValue | None:
             return None
         items.append(scalar)
     return _StructuredValue("sequence", tuple(items))
+
+
+def _parse_assignment_sequence(value: str) -> _StructuredValue | None:
+    """Parse an unwrapped list of labelled scalar components in source order."""
+
+    parts = _split_top_level(value)
+    if parts is None or len(parts) < 2:
+        return None
+    stripped_parts = [_strip_answer_label(part) for part in parts]
+    if any(part == stripped for part, stripped in zip(parts, stripped_parts)):
+        return None
+    items = tuple(_parse_scalar(part) for part in stripped_parts)
+    if any(item is None for item in items):
+        return None
+    return _StructuredValue("sequence", items)
 
 
 def _split_top_level(value: str, *, separators: str = ",") -> list[str] | None:
@@ -359,8 +379,117 @@ def _symbolic_equivalent(answer: str, expected_answer: str) -> bool:
         return False
     try:
         transformations = standard_transformations + (implicit_multiplication_application,)
+        actual_vector = _parse_symbolic_vector(answer, parse_expr, transformations)
+        expected_vector = _parse_symbolic_vector(expected_answer, parse_expr, transformations)
+        if actual_vector is not None or expected_vector is not None:
+            if actual_vector is None or expected_vector is None:
+                return False
+            if len(actual_vector) != len(expected_vector):
+                return False
+            return all(
+                bool(sympy.simplify(actual - expected) == 0)
+                for actual, expected in zip(actual_vector, expected_vector)
+            )
+
         actual = parse_expr(answer, transformations=transformations)
         expected = parse_expr(expected_answer, transformations=transformations)
         return bool(sympy.simplify(actual - expected) == 0)
     except (SyntaxError, TypeError, ValueError):
         return False
+
+
+def _parse_symbolic_vector(value: str, parse_expr: Any, transformations: Any) -> tuple[Any, ...] | None:
+    """Parse vector literals and linear combinations of scalar-vector terms."""
+
+    literal = _symbolic_vector_literal(value, parse_expr, transformations)
+    if literal is not None:
+        return literal
+
+    terms = _split_top_level_addition(value)
+    if terms is None:
+        return None
+    total: list[Any] | None = None
+    for sign, term in terms:
+        scaled = _symbolic_scaled_vector(term, parse_expr, transformations)
+        if scaled is None:
+            return None
+        coefficient, vector = scaled
+        if total is None:
+            total = [0] * len(vector)
+        if len(total) != len(vector):
+            return None
+        for index, component in enumerate(vector):
+            total[index] += sign * coefficient * component
+    return tuple(total) if total is not None else None
+
+
+def _symbolic_vector_literal(
+    value: str, parse_expr: Any, transformations: Any
+) -> tuple[Any, ...] | None:
+    stripped = value.strip()
+    delimiters = {"[": "]", "(": ")", "<": ">"}
+    if len(stripped) < 2 or delimiters.get(stripped[0]) != stripped[-1]:
+        return None
+    parts = _split_top_level(stripped[1:-1])
+    if parts is None or len(parts) < 2:
+        return None
+    return tuple(parse_expr(part, transformations=transformations) for part in parts)
+
+
+def _symbolic_scaled_vector(
+    value: str, parse_expr: Any, transformations: Any
+) -> tuple[Any, tuple[Any, ...]] | None:
+    stripped = value.strip()
+    opening_index = _first_top_level_opening(stripped)
+    if opening_index is None:
+        return None
+    vector = _symbolic_vector_literal(
+        stripped[opening_index:], parse_expr, transformations
+    )
+    if vector is None:
+        return None
+    coefficient_text = stripped[:opening_index].strip()
+    if coefficient_text.endswith("*"):
+        coefficient_text = coefficient_text[:-1].rstrip()
+    if not coefficient_text:
+        return None
+    coefficient = parse_expr(coefficient_text, transformations=transformations)
+    return coefficient, vector
+
+
+def _first_top_level_opening(value: str) -> int | None:
+    for index, character in enumerate(value):
+        if character in "([<":
+            return index
+    return None
+
+
+def _split_top_level_addition(value: str) -> list[tuple[int, str]] | None:
+    """Split a symbolic linear combination without splitting vector components."""
+
+    stack: list[str] = []
+    closing = {")": "(", "]": "[", ">": "<"}
+    terms: list[tuple[int, str]] = []
+    sign = 1
+    start = 0
+    for index, character in enumerate(value):
+        if character in "([<":
+            stack.append(character)
+        elif character in closing:
+            if not stack or stack.pop() != closing[character]:
+                return None
+        elif character in "+-" and not stack:
+            prefix = value[start:index].strip()
+            if prefix:
+                terms.append((sign, prefix))
+            elif index != 0:
+                return None
+            sign = 1 if character == "+" else -1
+            start = index + 1
+    if stack:
+        return None
+    final = value[start:].strip()
+    if not final:
+        return None
+    terms.append((sign, final))
+    return terms

@@ -8,3 +8,4 @@ pdfplumber
 pytesseract
 Pillow
 python-pptx
+sympy==1.14.0
