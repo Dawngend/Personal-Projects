@@ -33,6 +33,13 @@ class ApiRepository:
     def _connection(self):
         return open_connection(self.database_path)
 
+    def ping(self) -> bool:
+        try:
+            with self._connection() as connection:
+                return connection.execute("SELECT 1").fetchone() == (1,)
+        except sqlite3.Error:
+            return False
+
     def _initialize(self) -> None:
         with self._connection() as connection:
             connection.executescript(

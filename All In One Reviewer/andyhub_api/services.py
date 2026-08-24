@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 import random
 import re
@@ -43,12 +44,15 @@ from .schemas import (
     SessionSummary,
 )
 from .settings import Settings
+from .structured_logging import log_event
 
 
 ALLOWED_UPLOADS = {
     ".pdf": "application/pdf",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 }
+
+LOGGER = logging.getLogger("andyhub.jobs")
 
 
 def _not_found(kind: str) -> HTTPException:
@@ -179,17 +183,23 @@ class GenerationService:
         if self._thread:
             self._thread.join(timeout=2)
 
+    @property
+    def is_running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
     def run_pending_once(self) -> bool:
         job = self.repository.claim_next_job()
         if not job:
             return False
+        started = time.perf_counter()
+        log_event(LOGGER, "generation_job_started", service="worker", job_id=job["id"])
         try:
             modules = [self.repository.get_module(module_id) for module_id in json.loads(job["module_ids"])]
             if any(module is None for module in modules):
                 raise ValueError("A selected module no longer exists")
             resolved = [module for module in modules if module is not None]
             deps = self.dependencies_factory()
-            self.repository.update_job(job["id"], stage="extracting", progress=10, message="Extracting selected modules")
+            self._update_job(job["id"], stage="extracting", progress=10, message="Extracting selected modules")
             preparation = prepare_custom_deck(
                 [module.filename for module in resolved],
                 extract_file=deps.extract_file,
@@ -198,12 +208,12 @@ class GenerationService:
             )
             if preparation is None:
                 raise ValueError("No usable text was extracted from the selected modules")
-            self.repository.update_job(job["id"], stage="retrieving_memory", progress=25, message="Preparing subject memory")
+            self._update_job(job["id"], stage="retrieving_memory", progress=25, message="Preparing subject memory")
             client = deps.create_client()
             raw_cards: list[dict] = []
             per_chunk = -(-job["total_questions"] // len(preparation.chunks))
             for index, chunk in enumerate(preparation.chunks, start=1):
-                self.repository.update_job(
+                self._update_job(
                     job["id"], stage="generating", progress=25 + int(55 * (index - 1) / len(preparation.chunks)),
                     message=f"Generating questions from module chunk {index} of {len(preparation.chunks)}", cards_received=len(raw_cards),
                 )
@@ -211,19 +221,61 @@ class GenerationService:
                 if index < len(preparation.chunks):
                     deps.sleep(2)
             deps.add_memory(job["deck_name"], job["subject"], list(preparation.chunks))
-            self.repository.update_job(job["id"], stage="validating", progress=85, message="Validating generated cards", cards_received=len(raw_cards))
+            self._update_job(job["id"], stage="validating", progress=85, message="Validating generated cards", cards_received=len(raw_cards))
             valid_cards = validate_generated_cards(raw_cards, job["total_questions"])
             if not valid_cards:
                 raise ValueError("The generator returned no valid cards")
-            self.repository.update_job(job["id"], stage="saving", progress=95, message="Saving deck", cards_valid=len(valid_cards))
+            self._update_job(job["id"], stage="saving", progress=95, message="Saving deck", cards_valid=len(valid_cards))
             deck_id = persist_valid_cards(
                 deck_name=job["deck_name"], subject=job["subject"], selected_files=preparation.selected_files,
                 valid_cards=valid_cards, persist_deck=deps.persist_deck,
             )
-            self.repository.update_job(job["id"], status="complete", stage="complete", progress=100, message="Deck ready", cards_received=len(raw_cards), cards_valid=len(valid_cards), deck_id=deck_id)
+            self._update_job(job["id"], status="complete", stage="complete", progress=100, message="Deck ready", cards_received=len(raw_cards), cards_valid=len(valid_cards), deck_id=deck_id)
+            log_event(
+                LOGGER,
+                "generation_job_completed",
+                service="worker",
+                job_id=job["id"],
+                stage="complete",
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                cards_received=len(raw_cards),
+                cards_valid=len(valid_cards),
+            )
         except Exception as exc:
-            self.repository.update_job(job["id"], status="failed", stage="failed", message="Generation failed", error=str(exc)[:500])
+            self._update_job(job["id"], status="failed", stage="failed", message="Generation failed", error=str(exc)[:500])
+            log_event(
+                LOGGER,
+                "generation_job_failed",
+                service="worker",
+                job_id=job["id"],
+                stage="failed",
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                error_code=type(exc).__name__,
+            )
         return True
+
+    def _update_job(self, job_id: str, **fields: object) -> None:
+        self.repository.update_job(job_id, **fields)
+        safe_fields = {
+            key: value
+            for key, value in fields.items()
+            if key
+            in {
+                "status",
+                "stage",
+                "progress",
+                "cards_received",
+                "cards_valid",
+                "deck_id",
+            }
+        }
+        log_event(
+            LOGGER,
+            "generation_job_progress",
+            service="worker",
+            job_id=job_id,
+            **safe_fields,
+        )
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
+import logging
+import os
+from pathlib import Path
+import time
 from typing import AsyncIterator, Callable
+from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
@@ -30,6 +35,10 @@ from .schemas import (
 )
 from .services import ALLOWED_UPLOADS, DeckService, GenerationService, ModuleService, QuizService
 from .settings import Settings
+from .structured_logging import configure_logging, log_event
+
+
+LOGGER = logging.getLogger("andyhub.api")
 
 
 def create_app(
@@ -37,6 +46,7 @@ def create_app(
     *,
     dependencies_factory: Callable[[], GenerationDependencies] = default_generation_dependencies,
 ) -> FastAPI:
+    configure_logging()
     settings = settings or Settings.defaults()
     repository = ApiRepository(settings.database_path)
     module_service = ModuleService(settings, repository)
@@ -49,18 +59,50 @@ def create_app(
         app.state.course_memory_status = "ok"
         if settings.initialize_course_memory:
             try:
-                initialize_course_memory()
+                initialize_course_memory(settings.resolved_course_memory_directory)
             except Exception:
                 app.state.course_memory_status = "unavailable"
-        generation_service.start()
+        if settings.start_generation_worker:
+            generation_service.start()
         try:
             yield
         finally:
-            generation_service.stop()
+            if settings.start_generation_worker:
+                generation_service.stop()
 
     app = FastAPI(title="AndyHub API", version="1.0.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.generation_service = generation_service
+
+    @app.middleware("http")
+    async def structured_request_log(request: Request, call_next):
+        request_id = request.headers.get("x-request-id") or uuid4().hex
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            log_event(
+                LOGGER,
+                "http_request_failed",
+                request_id=request_id,
+                method=request.method,
+                path=request.url.path,
+                status=500,
+                duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                error_code=type(exc).__name__,
+            )
+            raise
+        response.headers["x-request-id"] = request_id
+        log_event(
+            LOGGER,
+            "http_request_completed",
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        )
+        return response
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
@@ -72,8 +114,28 @@ def create_app(
         return JSONResponse(status_code=422, content={"error": {"code": "validation_error", "message": "Request validation failed", "details": exc.errors()}})
 
     @app.get("/api/v1/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "database": "ok", "course_memory": getattr(app.state, "course_memory_status", "ok"), "generator": "configured"}
+    def health() -> JSONResponse:
+        database_status = "ok" if repository.ping() else "unavailable"
+        course_memory_status = getattr(app.state, "course_memory_status", "ok")
+        generator_status = "configured" if _groq_is_configured() else "unconfigured"
+        status = (
+            "ok"
+            if database_status == "ok"
+            and course_memory_status == "ok"
+            and generator_status == "configured"
+            else "degraded"
+        )
+        return JSONResponse(
+            status_code=200 if status == "ok" else 503,
+            content={
+                "status": status,
+                "service": "api",
+                "database": database_status,
+                "course_memory": course_memory_status,
+                "generator": generator_status,
+                "worker_mode": "embedded" if settings.start_generation_worker else "external",
+            },
+        )
 
     @app.get("/api/v1/capabilities")
     def capabilities() -> dict[str, object]:
@@ -149,6 +211,18 @@ def create_app(
         return quiz_service.summary(session_id)
 
     return app
+
+
+def _groq_is_configured() -> bool:
+    if os.environ.get("GROQ_API_KEY", "").strip():
+        return True
+    secret_file = os.environ.get("GROQ_API_KEY_FILE", "").strip()
+    if secret_file:
+        try:
+            return bool(Path(secret_file).read_text(encoding="utf-8").strip())
+        except OSError:
+            return False
+    return False
 
 
 if __name__ == "__main__":

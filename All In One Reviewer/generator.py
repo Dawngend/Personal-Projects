@@ -94,6 +94,13 @@ def _get_client() -> Groq:
     Checks environment variables first, then falls back to Streamlit secrets.
     """
     api_key = os.environ.get("GROQ_API_KEY")
+    api_key_file = os.environ.get("GROQ_API_KEY_FILE")
+    if not api_key and api_key_file:
+        try:
+            with open(api_key_file, encoding="utf-8") as source:
+                api_key = source.read()
+        except OSError:
+            pass
     
     # Fallback to loading Streamlit secrets if running locally
     if not api_key:

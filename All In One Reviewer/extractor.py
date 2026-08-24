@@ -11,7 +11,12 @@ from pptx.enum.shapes import MSO_SHAPE_TYPE
 # Tesseract executable path for Windows
 #pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-EXTRACTION_CACHE_DIR = Path(__file__).resolve().parent / "extraction_cache"
+EXTRACTION_CACHE_DIR = Path(
+    os.environ.get(
+        "ANDYHUB_EXTRACTION_CACHE_DIR",
+        Path(__file__).resolve().parent / "extraction_cache",
+    )
+)
 
 
 def content_hash(file_path: str | os.PathLike[str]) -> str:
