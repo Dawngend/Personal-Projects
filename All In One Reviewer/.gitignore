@@ -5,3 +5,9 @@ reviewer.db
 uploads/
 course_brain_db/
 extraction_cache/
+.staging/
+apps/web/*.tsbuildinfo
+deploy/staging/.env.staging
+deploy/staging/cloudflared/config.yml
+deploy/staging/cloudflared/*.json
+deploy/staging/secrets/

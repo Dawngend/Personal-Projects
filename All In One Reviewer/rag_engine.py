@@ -8,7 +8,12 @@ from typing import Any
 
 
 DEFAULT_COLLECTION_NAME = "feu_modules"
-DEFAULT_MEMORY_DIRECTORY = Path(__file__).resolve().parent / "course_brain_db"
+DEFAULT_MEMORY_DIRECTORY = Path(
+    os.environ.get(
+        "ANDYHUB_COURSE_MEMORY_DIRECTORY",
+        Path(__file__).resolve().parent / "course_brain_db",
+    )
+)
 
 
 class CourseMemory:
