@@ -1,0 +1,25 @@
+{
+  "projectId": "a59a46bd-1bd0-46e8-837b-9655f7f6ef32",
+  "shape": "package",
+  "pkg": "andyhub-web",
+  "globalName": "ProofGarden",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": "app/globals.css",
+  "readmeHeader": ".design-sync/conventions.md",
+  "libOverrides": {
+    "detect.mjs": "tolerate EPERM on the damaged .pytest_cache dir during the storybook walk"
+  },
+  "componentSrcMap": {
+    "DeckBriefForm": null,
+    "DeckDetail": null,
+    "DeckWorkshop": null,
+    "ModuleDropzone": null,
+    "ModuleShelf": null,
+    "QuestionStyleField": null,
+    "StudyWorkspace": null,
+    "GenerationTrace": null,
+    "MathPrompt": null,
+    "StudySession": null,
+    "QueryProvider": null
+  }
+}
