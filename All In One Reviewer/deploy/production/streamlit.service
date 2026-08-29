@@ -6,9 +6,19 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=andreipamesa20
+# WorkingDirectory takes the rest of the line, so spaces are safe unquoted, and
+# it must stay the app root: generator.py reads the Groq key from the relative
+# path .streamlit/secrets.toml.
 WorkingDirectory=/home/andreipamesa20/School-Works/All In One Reviewer
-ExecStart=/home/andreipamesa20/School-Works/All In One Reviewer/.venv/bin/python -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0
-Restart=on-failure
+# The executable path MUST be quoted. systemd splits ExecStart on whitespace,
+# and this path contains spaces, so an unquoted form tries to execute
+# /home/andreipamesa20/School-Works/All and fails every time with
+# status=203/EXEC. This was found only by running it: the unquoted version
+# passes every static check, and it also broke rollback.sh, which starts this
+# same unit at exactly the moment recovery is needed.
+ExecStart="/home/andreipamesa20/School-Works/All In One Reviewer/.venv/bin/python" -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+# always, not on-failure: a clean exit should still bring the site back.
+Restart=always
 RestartSec=5s
 TimeoutStopSec=30s
 KillSignal=SIGINT
