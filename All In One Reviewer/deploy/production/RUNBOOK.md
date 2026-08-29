@@ -163,12 +163,20 @@ Use an interactive editor to place only the existing Groq API key in the file. D
 sudoedit /etc/andyhub/groq_api_key
 ```
 
+The secret must be owned by the **application user**, not by root. Compose bind-mounts this file into the container with its own ownership, and the containers run as that user. A `root:root` file is unreadable to them: the API then reports `generator: unconfigured`, its health endpoint returns 503 indefinitely, and the cutover fails waiting on that dependency while every other check looks correct. A rehearsal reproduced exactly this.
+
 ```bash
-sudo chown root:root /etc/andyhub/groq_api_key
+sudo chown andreipamesa20:andreipamesa20 /etc/andyhub/groq_api_key
 ```
 
 ```bash
 sudo chmod 0600 /etc/andyhub/groq_api_key
+```
+
+The directory must also be traversable by that user. A `0700` mode on `/etc/andyhub` blocks access before the file's own mode is ever consulted:
+
+```bash
+sudo chmod 0711 /etc/andyhub
 ```
 
 Confirm metadata only. Do not read the file back:
@@ -177,7 +185,15 @@ Confirm metadata only. Do not read the file back:
 sudo stat -c '%U %G %a %s bytes' /etc/andyhub/groq_api_key
 ```
 
-The size must be greater than zero and the mode must be `600`.
+The size must be greater than zero, the mode must be `600`, and the owner must be `andreipamesa20`.
+
+Then confirm the container user can actually read it. This is the check that matters, and the one a root shell cannot perform for you, because root can read the file regardless:
+
+```bash
+sudo runuser -u andreipamesa20 -- test -r /etc/andyhub/groq_api_key && echo readable
+```
+
+It must print `readable`. `cutover.sh` performs this same test and refuses to start if it fails.
 
 ## 6. Confirm the fixed port handoff
 

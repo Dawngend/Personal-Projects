@@ -125,7 +125,22 @@ command -v curl >/dev/null 2>&1 || { log "ERROR: curl is not installed" >&2; exi
 command -v ss >/dev/null 2>&1 || { log "ERROR: ss is not installed" >&2; exit 1; }
 docker compose version >/dev/null
 systemctl cat streamlit.service >/dev/null
-[[ -r /etc/andyhub/groq_api_key ]] || { log "ERROR: /etc/andyhub/groq_api_key is not readable" >&2; exit 1; }
+[[ -s /etc/andyhub/groq_api_key ]] || { log "ERROR: /etc/andyhub/groq_api_key is missing or empty" >&2; exit 1; }
+
+# Readable BY THE CONTAINER USER, not by root. This script runs as root, so a
+# plain [[ -r ]] test always passes and proves nothing. Compose bind-mounts the
+# secret with its own ownership, so a root:root 0600 file leaves the api unable
+# to read its key: it reports generator "unconfigured", health returns 503
+# forever, and the cutover fails waiting on that dependency. A rehearsal hit
+# exactly this while every static check passed.
+if ! runuser -u "${APP_USER}" -- test -r /etc/andyhub/groq_api_key; then
+    log "ERROR: ${APP_USER} cannot read /etc/andyhub/groq_api_key" >&2
+    log "       the container runs as that user and needs read access; fix with:" >&2
+    log "       sudo chown ${APP_USER}:${APP_USER} /etc/andyhub/groq_api_key" >&2
+    log "       sudo chmod 0600 /etc/andyhub/groq_api_key" >&2
+    log "       sudo chmod 0711 /etc/andyhub" >&2
+    exit 1
+fi
 
 for directory in Database uploads extraction_cache course_brain_db; do
     [[ -d "${APP_ROOT}/${directory}" ]] || {
