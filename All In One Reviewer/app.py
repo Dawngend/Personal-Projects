@@ -4,7 +4,13 @@ import json
 import os
 import database as db 
 from generator import generate_custom_deck 
-from grading import decode_card_options, grade_enumeration, grade_problem_answer, problem_payload
+from grading import (
+    decode_card_options,
+    equivalent_form_note,
+    grade_enumeration,
+    grade_problem_answer,
+    problem_payload,
+)
 
 # ── Theme & Configuration ────────────────────────────────────────────────────
 # We set layout to "centered" natively, but our CSS will strictly enforce the width
@@ -335,8 +341,13 @@ elif app_mode == "📚 Study Dashboard":
             if not st.session_state.answered_correctly and st.button(
                 "Check final answer", key=f"check_problem_{current_card['id']}", type="primary"
             ):
-                is_correct = grade_problem_answer(answer, final_answer)
-                st.session_state.answer_feedback = {"card_id": current_card["id"], "correct": is_correct}
+                outcome = grade_problem_answer(answer, final_answer)
+                is_correct = outcome.matched
+                st.session_state.answer_feedback = {
+                    "card_id": current_card["id"],
+                    "correct": is_correct,
+                    "matched_tier": outcome.tier if is_correct else None,
+                }
                 if is_correct:
                     st.session_state.answered_correctly = True
                 elif current_card not in st.session_state.failed_cards_pool:
@@ -351,6 +362,9 @@ elif app_mode == "📚 Study Dashboard":
             if feedback and feedback.get("card_id") == current_card["id"]:
                 if feedback["correct"]:
                     st.success("🎯 Correct final answer. Review the solution steps for the full method.")
+                    equivalent_form = equivalent_form_note(feedback.get("matched_tier"))
+                    if equivalent_form:
+                        st.caption(equivalent_form)
                     _next_question_button()
                 else:
                     st.warning("Not quite. Show the solution steps, then try again.")

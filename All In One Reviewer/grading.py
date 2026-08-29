@@ -98,6 +98,21 @@ def grade_problem_answer(
     return ProblemAnswerResult("fail")
 
 
+def equivalent_form_note(matched_tier: str | None) -> str | None:
+    """Explain a match that was accepted in a different written form.
+
+    An "exact" match needs no explanation, so it returns None and callers show
+    nothing, keeping the common case quiet. Pure and presentation-agnostic so
+    the Streamlit and API surfaces cannot drift apart.
+    """
+
+    return {
+        "numeric": "Your answer was read as a number, so a fraction, percent, or rounded decimal counts.",
+        "structured": "Your answer was compared entry by entry, so spacing and bracket style do not matter.",
+        "symbolic": "Your answer was checked algebraically, so an equivalent expression counts.",
+    }.get(matched_tier or "")
+
+
 def problem_payload(options: Any, correct_answer: str) -> tuple[str, list[str]]:
     """Support problem payloads while retaining the legacy correct-answer fallback."""
 

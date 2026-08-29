@@ -312,6 +312,7 @@ class QuizService:
         missed: list[str] | None = None
         expected_answer: str | None = None
         steps: list[str] | None = None
+        matched_tier: str | None = None
         if card.card_type == "multiple_choice":
             correct = value == card.correct_answer
         elif card.card_type == "enumeration":
@@ -322,7 +323,11 @@ class QuizService:
             correct = bool(expected) and not missed
         else:
             expected_answer, steps = problem_payload(decode_card_options(card.options), card.correct_answer)
-            correct = grade_problem_answer(value, expected_answer)
+            outcome = grade_problem_answer(value, expected_answer)
+            # Keep a real bool for storage and the response; the tier travels
+            # alongside it rather than inside it.
+            correct = outcome.matched
+            matched_tier = outcome.tier if outcome.matched else None
         self.repository.record_attempt(session_id, card_id, correct)
         attempt = self.repository.attempt_for_current_card(session_id, card_id)
         complete = bool(attempt and (attempt["status"] == "correct" or attempt["revealed"]))
@@ -335,6 +340,7 @@ class QuizService:
         return GradeResult(
             correct=correct, complete=complete, feedback=feedback,
             caught_items=caught, missed_items=missed, expected_answer=expected_answer, solution_steps=steps if correct else None,
+            matched_tier=matched_tier,
         )
 
     def reveal(self, session_id: str, card_id: int) -> RevealResult:

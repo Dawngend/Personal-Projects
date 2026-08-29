@@ -147,6 +147,10 @@ class GradeResult(ApiModel):
     missed_items: list[str] | None = None
     expected_answer: str | None = None
     solution_steps: list[str] | None = None
+    # Which comparison tier proved a problem answer equivalent, letting the UI
+    # separate a verbatim match from an accepted equivalent form. None whenever
+    # the ladder did not run (multiple choice, enumeration) or did not match.
+    matched_tier: Literal["exact", "numeric", "structured", "symbolic"] | None = None
 
 
 class RevealResult(ApiModel):

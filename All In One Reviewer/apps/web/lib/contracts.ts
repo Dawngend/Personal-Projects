@@ -106,9 +106,17 @@ export const GradeResultSchema = z
     missedItems: z.array(z.string()).nullable().optional(),
     expectedAnswer: z.string().nullable().optional(),
     solutionSteps: z.array(z.string()).nullable().optional(),
+    /**
+     * Which comparison tier proved a problem answer equivalent, so a verbatim
+     * match reads differently from an accepted equivalent form. Absent or null
+     * whenever the ladder did not run or did not match; the internal "fail"
+     * outcome is never sent to the client.
+     */
+    matchedTier: z.enum(["exact", "numeric", "structured", "symbolic"]).nullable().optional(),
   })
   .strict();
 export type GradeResult = z.infer<typeof GradeResultSchema>;
+export type MatchedTier = NonNullable<GradeResult["matchedTier"]>;
 
 export const RevealResultSchema = z
   .object({ expectedAnswer: z.string(), solutionSteps: z.array(z.string()) })

@@ -92,6 +92,25 @@ describe("Phase 2 API client contract", () => {
       RevealResultSchema.parse({ expectedAnswer: "24", solutionSteps: ["Expand the determinant."] })
         .solutionSteps,
     ).toHaveLength(1);
+  });
+
+  it("carries the matched comparison tier without breaking older payloads", () => {
+    const base = { correct: true, complete: true, feedback: "Correct." };
+    // A verbatim match and an accepted equivalent form must be distinguishable.
+    expect(GradeResultSchema.parse({ ...base, matchedTier: "exact" }).matchedTier).toBe("exact");
+    expect(GradeResultSchema.parse({ ...base, matchedTier: "numeric" }).matchedTier).toBe("numeric");
+    expect(GradeResultSchema.parse({ ...base, matchedTier: "structured" }).matchedTier).toBe(
+      "structured",
+    );
+    expect(GradeResultSchema.parse({ ...base, matchedTier: "symbolic" }).matchedTier).toBe(
+      "symbolic",
+    );
+    // Absent and null both mean "no tier applies", so pre-existing responses parse.
+    expect(GradeResultSchema.parse(base).matchedTier).toBeUndefined();
+    expect(GradeResultSchema.parse({ ...base, matchedTier: null }).matchedTier).toBeNull();
+    // "fail" is an internal ladder outcome and must never reach the client.
+    expect(GradeResultSchema.safeParse({ ...base, matchedTier: "fail" }).success).toBe(false);
+    expect(GradeResultSchema.safeParse({ ...base, matchedTier: "guessed" }).success).toBe(false);
     expect(
       SessionSummarySchema.parse({
         totalQuestions: 3,

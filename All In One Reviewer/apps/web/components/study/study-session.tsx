@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { GradeResult, QuizCard, RevealResult } from "@/lib/contracts";
+import type { GradeResult, MatchedTier, QuizCard, RevealResult } from "@/lib/contracts";
 import { MathPrompt } from "./math-prompt";
 import styles from "./study-session.module.css";
 
@@ -90,9 +90,27 @@ function SessionProgress({
   );
 }
 
+/**
+ * Explain a match that was accepted in a different written form. "exact" needs
+ * no explanation, so it returns null and nothing is rendered.
+ */
+function equivalentFormNote(tier: MatchedTier | null | undefined): string | null {
+  switch (tier) {
+    case "numeric":
+      return "Your answer was read as a number, so a fraction, percent, or rounded decimal counts.";
+    case "structured":
+      return "Your answer was compared entry by entry, so spacing and bracket style do not matter.";
+    case "symbolic":
+      return "Your answer was checked algebraically, so an equivalent expression counts.";
+    default:
+      return null;
+  }
+}
+
 function Feedback({ grade, reveal }: { grade: GradeResult | null; reveal: RevealResult | null }) {
   const expected = reveal?.expectedAnswer ?? grade?.expectedAnswer;
   const steps = reveal?.solutionSteps ?? grade?.solutionSteps;
+  const equivalentForm = grade?.correct ? equivalentFormNote(grade.matchedTier) : null;
   if (!grade && !reveal) return null;
   return (
     <section
@@ -104,6 +122,12 @@ function Feedback({ grade, reveal }: { grade: GradeResult | null; reveal: Reveal
           ? "Worked solution revealed. This card is marked missed for this session."
           : grade?.feedback}
       </p>
+      {equivalentForm ? (
+        <div className={styles.equivalentForm}>
+          <strong>Equivalent form</strong>
+          <p>{equivalentForm}</p>
+        </div>
+      ) : null}
       {grade?.caughtItems?.length ? (
         <div>
           <strong>Caught</strong>

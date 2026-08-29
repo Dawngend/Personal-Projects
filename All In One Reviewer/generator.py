@@ -26,6 +26,16 @@ QUESTION_STYLES = {
     "mixed": "Mixed",
 }
 
+ANSWER_FORMATS = (
+    "scalar",
+    "fraction",
+    "matrix",
+    "vector",
+    "set",
+    "expression",
+    "text",
+)
+
 CARD_FORMATS = (
     'Every question object must have "type" and a non-empty "question". '
     'For "multiple_choice", provide "options" as exactly 4 non-empty strings and '
@@ -34,7 +44,12 @@ CARD_FORMATS = (
     'short expected items; do not provide multiple-choice options. '
     'For "problem", provide "correct_answer" as the concise final answer and '
     '"solution_steps" as a non-empty JSON array of worked, student-readable steps; '
-    'do not provide multiple-choice options.'
+    'do not provide multiple-choice options. '
+    'You may add an optional "answer_format" naming the shape of "correct_answer", '
+    'exactly one of: '
+    + ", ".join(f'"{answer_format}"' for answer_format in ANSWER_FORMATS)
+    + '. Omit "answer_format" entirely when unsure: it is detected automatically '
+    'when absent, so a wrong declaration is worse than none.'
 )
 
 SYSTEM_PROMPT = (
@@ -244,6 +259,19 @@ def _validate_card(card: dict, index: int) -> bool:
         print(f"  [Skipped] Card #{index}: 'question' must be a non-empty string.")
         return False
 
+    # `answer_format` is optional. An absent key means "auto-detect", which is
+    # how every card stored before this field existed keeps working. A present
+    # key must be a real declaration, so a malformed one is rejected rather
+    # than silently ignored.
+    if "answer_format" in card:
+        declared = card["answer_format"]
+        if not isinstance(declared, str) or declared.strip() not in ANSWER_FORMATS:
+            print(
+                f"  [Skipped] Card #{index}: 'answer_format' must be omitted or one of "
+                f"{', '.join(ANSWER_FORMATS)}; got {declared!r}."
+            )
+            return False
+
     if card_type == "multiple_choice":
         options = card.get("options")
         if not isinstance(options, list) or len(options) != 4:
@@ -297,10 +325,16 @@ def _card_storage_values(card: dict) -> tuple[str, object]:
         return json.dumps(expected_items), expected_items
     if card["type"] == "problem":
         final_answer = card["correct_answer"]
-        return final_answer, {
+        payload = {
             "final_answer": final_answer,
             "solution_steps": card["solution_steps"],
         }
+        # Only persist a declaration the model actually made; the key stays
+        # absent otherwise so stored payloads match the pre-existing shape.
+        declared = card.get("answer_format")
+        if isinstance(declared, str) and declared.strip() in ANSWER_FORMATS:
+            payload["answer_format"] = declared.strip()
+        return final_answer, payload
     return card["correct_answer"], card["options"]
 
 
