@@ -2,9 +2,11 @@ import os
 import json
 import re
 import sys
+import tempfile
 import time
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 from groq import Groq
 from rag_engine import add_to_memory, get_historical_context
@@ -14,8 +16,19 @@ from repositories import NewCard
 
 # ── Constants & Configuration ────────────────────────────────────────────────
 
-# MODEL CHOICES: 
-MODEL_NAME = "llama-3.3-70b-versatile"
+# MODEL CHOICES:
+#
+# Read from the environment so a retired model is a config change rather than
+# a code edit and redeploy. Groq removed `llama-3.3-70b-versatile`, which had
+# been hardcoded here, and every generation failed with a 404 while the health
+# check still reported the generator as "configured" because it only checks
+# that an API key exists.
+#
+# The default was verified against the real generation prompt on 2026-08-29:
+# openai/gpt-oss-120b returned 6 of 6 valid cards with the correct question
+# mix. openai/gpt-oss-20b and qwen/qwen3.8-27b both failed JSON parsing on the
+# same input, so do not switch the default without re-running that check.
+MODEL_NAME = os.environ.get("ANDYHUB_GROQ_MODEL", "").strip() or "openai/gpt-oss-120b"
 
 MAX_CHUNK_CHARS = 12_000
 
@@ -227,9 +240,24 @@ def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMP
         return questions
 
     except json.JSONDecodeError as e:
-        print(f"  [Warning] JSON parse error: {e}. Raw response saved to 'groq_raw_error.txt'.")
-        with open("groq_raw_error.txt", "w", encoding="utf-8") as f:
-            f.write(raw_text if 'raw_text' in locals() else "No response text")
+        # A chunk that will not parse is recoverable: skip it and keep the
+        # cards from the other chunks. Saving the raw response is a debugging
+        # convenience and must never be able to fail the run. Writing it to the
+        # working directory raised PermissionError under the container, whose
+        # /app is not writable, so a single unparseable chunk aborted the whole
+        # generation after other chunks had already produced valid cards.
+        print(f"  [Warning] JSON parse error: {e}. Skipping this chunk.")
+        raw = raw_text if "raw_text" in locals() else "No response text"
+        try:
+            debug_dir = Path(
+                os.environ.get("ANDYHUB_EXTRACTION_CACHE_DIR", tempfile.gettempdir())
+            )
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            debug_path = debug_dir / "groq_raw_error.txt"
+            debug_path.write_text(raw, encoding="utf-8")
+            print(f"  [Warning] Raw response saved to {debug_path}.")
+        except OSError as write_error:
+            print(f"  [Warning] Could not save the raw response: {write_error}")
         return []
     except Exception as e:
         print(f"  [Error] Groq request failed using {MODEL_NAME}: {e}")

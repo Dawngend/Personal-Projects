@@ -106,11 +106,25 @@ def process_module_file_v2(file_path):
     cache_file = get_cache_filename(file_path)
     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
     
-    # Check if a saved text file already exists!
+    # Check if a saved text file already exists.
+    #
+    # Existence alone is not enough. Extraction appends to this file page by
+    # page, so a run that failed or was interrupted leaves an empty or partial
+    # file behind. Treating that as a complete extraction permanently skips
+    # OCR for that module: it can never recover, and generation silently
+    # produces nothing. An empty cache entry is therefore a miss, and the
+    # stale file is removed so the extraction below can rewrite it.
     if os.path.exists(cache_file):
-        print(f"  [Fast Load] Found saved extraction! Skipping Tesseract for {file_path}...")
         with open(cache_file, "r", encoding="utf-8") as f:
-            return f.read()
+            cached = f.read()
+        if cached.strip():
+            print(f"  [Fast Load] Found saved extraction! Skipping Tesseract for {file_path}...")
+            return cached
+        print(f"  [Cache] Discarding an empty extraction for {file_path}; re-extracting...")
+        try:
+            os.remove(cache_file)
+        except OSError:
+            pass
 
     if file_extension == '.pdf':
         print(f"Processing PDF: {file_path}...")
