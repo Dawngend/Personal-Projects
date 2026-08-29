@@ -1,0 +1,17 @@
+[Unit]
+Description=AndyHub legacy Streamlit application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=andreipamesa20
+WorkingDirectory=/home/andreipamesa20/School-Works/All In One Reviewer
+ExecStart=/home/andreipamesa20/School-Works/All In One Reviewer/.venv/bin/python -m streamlit run app.py --server.port 8501 --server.address 0.0.0.0
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

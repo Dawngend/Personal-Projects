@@ -1,0 +1,115 @@
+name: andyhub-production
+
+x-api-environment: &api-environment
+  ANDYHUB_ENVIRONMENT: production
+  ANDYHUB_DATA_ROOT: /data
+  ANDYHUB_DATABASE_PATH: /data/Database/reviewer.db
+  ANDYHUB_UPLOADS_DIRECTORY: /data/uploads
+  ANDYHUB_EXTRACTION_CACHE_DIR: /data/extraction_cache
+  ANDYHUB_COURSE_MEMORY_DIRECTORY: /data/course_brain_db
+  GROQ_API_KEY_FILE: /run/secrets/groq_api_key
+
+x-api-volumes: &api-volumes
+  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/Database:/data/Database
+  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/uploads:/data/uploads
+  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/extraction_cache:/data/extraction_cache
+  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/course_brain_db:/data/course_brain_db
+
+services:
+  api:
+    image: andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}
+    build:
+      context: ../..
+      dockerfile: deploy/api.Dockerfile
+    user: "${ANDYHUB_UID:-1000}:${ANDYHUB_GID:-1000}"
+    environment:
+      <<: *api-environment
+      ANDYHUB_START_GENERATION_WORKER: "false"
+      ANDYHUB_INITIALIZE_COURSE_MEMORY: "true"
+    secrets:
+      - groq_api_key
+    volumes: *api-volumes
+    networks: [production]
+    mem_limit: 128m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 180s
+
+  worker:
+    image: andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}
+    build:
+      context: ../..
+      dockerfile: deploy/api.Dockerfile
+    command: ["python", "-m", "andyhub_api.worker"]
+    user: "${ANDYHUB_UID:-1000}:${ANDYHUB_GID:-1000}"
+    environment:
+      <<: *api-environment
+      ANDYHUB_START_GENERATION_WORKER: "true"
+      ANDYHUB_WORKER_HEALTH_PORT: "8001"
+    secrets:
+      - groq_api_key
+    volumes: *api-volumes
+    networks: [production]
+    mem_limit: 384m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).read()"]
+      interval: 15s
+      timeout: 8s
+      retries: 6
+      start_period: 20s
+
+  web:
+    image: andyhub-web:${ANDYHUB_IMAGE_TAG:-phase6-production}
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
+    environment:
+      ANDYHUB_ENVIRONMENT: production
+      ANDYHUB_API_ORIGIN: http://api:8000
+    networks: [production]
+    mem_limit: 96m
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health | grep -q '\"status\":\"ok\"'"]
+      interval: 15s
+      timeout: 8s
+      retries: 6
+      start_period: 20s
+
+  proxy:
+    image: nginx:1.27.4-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:${ANDYHUB_PRODUCTION_PORT:-8080}:8080"
+    networks: [production]
+    mem_limit: 32m
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/api/v1/health | grep -q '"status":"ok"'
+      interval: 15s
+      timeout: 8s
+      retries: 6
+      start_period: 30s
+
+networks:
+  production:
+    name: andyhub-production
+
+secrets:
+  groq_api_key:
+    file: ${ANDYHUB_GROQ_SECRET_FILE:-/etc/andyhub/groq_api_key}
