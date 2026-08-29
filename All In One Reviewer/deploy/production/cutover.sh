@@ -5,7 +5,7 @@ readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly APP_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 readonly COMPOSE_FILE="${SCRIPT_DIR}/compose.production.yaml"
 readonly COMPOSE_PROJECT="andyhub-production"
-readonly PROXY_BASE_URL="http://127.0.0.1:${ANDYHUB_PRODUCTION_PORT:-8080}"
+readonly PROXY_BASE_URL="http://127.0.0.1:${ANDYHUB_PRODUCTION_PORT:-8501}"
 readonly APP_USER="${ANDYHUB_APP_USER:-andreipamesa20}"
 
 streamlit_stop_started=0
@@ -22,6 +22,10 @@ compose() {
 streamlit_is_healthy() {
     curl --fail --silent --show-error --max-time 5 \
         http://127.0.0.1:8501/_stcore/health >/dev/null
+}
+
+port_8501_is_listening() {
+    ss --no-header --tcp --listening 'sport = :8501' | grep -q .
 }
 
 production_stack_is_healthy() {
@@ -118,6 +122,7 @@ fi
 
 command -v docker >/dev/null 2>&1 || { log "ERROR: Docker is not installed" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { log "ERROR: curl is not installed" >&2; exit 1; }
+command -v ss >/dev/null 2>&1 || { log "ERROR: ss is not installed" >&2; exit 1; }
 docker compose version >/dev/null
 systemctl cat streamlit.service >/dev/null
 [[ -r /etc/andyhub/groq_api_key ]] || { log "ERROR: /etc/andyhub/groq_api_key is not readable" >&2; exit 1; }
@@ -135,16 +140,6 @@ export ANDYHUB_GID="$(id -g "${APP_USER}")"
 
 compose config --quiet
 
-if systemctl is-active --quiet streamlit.service; then
-    if ! streamlit_is_healthy; then
-        log "ERROR: streamlit.service is active but its health endpoint is failing; leaving it untouched" >&2
-        exit 1
-    fi
-elif streamlit_is_healthy; then
-    log "ERROR: port 8501 is healthy but streamlit.service is inactive; migrate the bare process to systemd first" >&2
-    exit 1
-fi
-
 if production_stack_is_healthy; then
     log "the production stack is already healthy; ensuring Streamlit stays disabled"
     streamlit_stop_started=1
@@ -153,11 +148,32 @@ if production_stack_is_healthy; then
     exit 0
 fi
 
+if systemctl is-active --quiet streamlit.service; then
+    if ! streamlit_is_healthy; then
+        log "ERROR: streamlit.service is active but its health endpoint is failing; leaving it untouched" >&2
+        exit 1
+    fi
+elif port_8501_is_listening; then
+    log "ERROR: port 8501 has an unmanaged listener; leaving it untouched" >&2
+    exit 1
+fi
+
 log "disabling and stopping the supervised Streamlit rollback target"
 streamlit_stop_started=1
 systemctl disable --now streamlit.service
 
-log "building and starting the 640 MB production stack"
+for _ in {1..15}; do
+    if ! port_8501_is_listening; then
+        break
+    fi
+    sleep 1
+done
+if port_8501_is_listening; then
+    log "ERROR: port 8501 did not become free after Streamlit stopped" >&2
+    exit 1
+fi
+
+log "building and starting the 704 MB production stack"
 COMPOSE_PARALLEL_LIMIT=1 compose up --detach --build --remove-orphans
 
 log "waiting up to 7 minutes for the local proxy and its dependencies"
@@ -189,4 +205,4 @@ done
 
 cutover_succeeded=1
 log "local cutover succeeded; the stack is healthy at ${PROXY_BASE_URL}"
-log "NOW change the andyhub.org Cloudflare tunnel service from http://localhost:8501 to http://localhost:8080, then run the public checks in RUNBOOK.md"
+log "the Cloudflare tunnel remains unchanged on localhost:8501; run the public checks in RUNBOOK.md"

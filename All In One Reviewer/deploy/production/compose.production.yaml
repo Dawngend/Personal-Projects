@@ -16,6 +16,10 @@ x-api-volumes: &api-volumes
   - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/course_brain_db:/data/course_brain_db
 
 services:
+  # Measured 20-question generation peaks (MiB): worker 347.3, api 81.9,
+  # web 40.1, proxy 10.4; measured total 479.6. Hard limits are worker 480,
+  # api 128, web 64, proxy 32; limit total 704. The host has 954 MB RAM and
+  # the installer provides a 2 GB swapfile as the pressure buffer.
   api:
     image: andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}
     build:
@@ -54,7 +58,7 @@ services:
       - groq_api_key
     volumes: *api-volumes
     networks: [production]
-    mem_limit: 384m
+    mem_limit: 480m
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).read()"]
@@ -72,7 +76,7 @@ services:
       ANDYHUB_ENVIRONMENT: production
       ANDYHUB_API_ORIGIN: http://api:8000
     networks: [production]
-    mem_limit: 96m
+    mem_limit: 64m
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health | grep -q '\"status\":\"ok\"'"]
@@ -93,7 +97,7 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "127.0.0.1:${ANDYHUB_PRODUCTION_PORT:-8080}:8080"
+      - "127.0.0.1:${ANDYHUB_PRODUCTION_PORT:-8501}:8080"
     networks: [production]
     mem_limit: 32m
     restart: unless-stopped

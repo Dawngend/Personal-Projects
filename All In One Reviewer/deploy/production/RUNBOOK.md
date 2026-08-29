@@ -2,7 +2,7 @@
 
 This runbook is for a human operator. None of these commands should be run by an automation agent against production. The target is the existing free-tier VM only: `andy-reviewer-server` (`34.134.184.11`) in project `project-312aa934-7212-437b-b62`, zone `us-central1-a`. Do not create or resize any cloud resource.
 
-The runtime has four containers with hard limits totaling 640 MB: worker 384 MB, API 128 MB, web 96 MB, and proxy 32 MB. Docker adds about 80 MB. The installer adds a persistent 2 GB swapfile, but swap is only a pressure valve. It is not permission to run Streamlit and the new stack together.
+The runtime has four containers with hard limits totaling 704 MB: worker 480 MB, API 128 MB, web 64 MB, and proxy 32 MB. A realistic 20-question generation measured peaks of 347.3 MiB for the worker, 81.9 MiB for the API, 40.1 MiB for the web service, and 10.4 MiB for the proxy (479.6 MiB total). Docker adds about 80 MB. The installer adds a persistent 2 GB swapfile, but swap is only a pressure valve. It is not permission to run Streamlit and the new stack together.
 
 ## 1. Connect to the VM
 
@@ -179,27 +179,28 @@ sudo stat -c '%U %G %a %s bytes' /etc/andyhub/groq_api_key
 
 The size must be greater than zero and the mode must be `600`.
 
-## 6. Prepare the Cloudflare dashboard, but do not change it yet
+## 6. Confirm the fixed port handoff
 
-Open Cloudflare Zero Trust in a browser and navigate to **Networks > Tunnels > andyhub-tunnel > Edit > Public Hostname / Published application routes**. Locate the `andyhub.org` route. The connector remains the existing token-mode `cloudflared.service`.
+The existing token-mode Cloudflare tunnel already sends `andyhub.org` to `localhost:8501`. The production proxy publishes on that same loopback port after Streamlit releases it. The tunnel configuration, dashboard ingress, token file, service, and DNS are never touched during cutover or rollback. No Cloudflare dashboard access is needed.
 
-Keep this page open. Do **not** change the route while Streamlit is still the active runtime. The one required cutover edit is:
+Confirm that the supervised Streamlit process is the only listener on port 8501:
 
-- From: `http://localhost:8501`
-- To: `http://localhost:8080`
+```bash
+sudo ss --tcp --listening --processes 'sport = :8501'
+```
 
-Do not create a tunnel, replace the token, add a local Cloudflare config file, or alter DNS.
+Stop if this shows any listener other than the expected Streamlit process. `cutover.sh` performs the same preflight and aborts before stopping Streamlit if port 8501 has an unmanaged listener.
 
 ## 7. Run the local cutover
 
-Make sure nobody is generating a deck. The command disables and stops supervised Streamlit first because both runtimes cannot fit in 954 MB, builds and starts the constrained stack, then checks proxy, web, API, and container health. Disabling Streamlit prevents both runtimes from starting after a VM reboot. Any error, timeout, Ctrl+C, or termination signal after Streamlit stop triggers an automatic rollback attempt that re-enables Streamlit.
+Make sure nobody is generating a deck. The command disables and stops supervised Streamlit first because both runtimes cannot fit in 954 MB, waits for port 8501 to become free, then builds and starts the constrained stack on that same port. It checks proxy, web, API, and container health. Disabling Streamlit prevents both runtimes from starting after a VM reboot. Any error, timeout, Ctrl+C, or termination signal after Streamlit stop triggers an automatic rollback attempt that frees port 8501 and re-enables Streamlit.
 
 ```bash
 cd "/home/andreipamesa20/School-Works/All In One Reviewer"
 sudo ./deploy/production/cutover.sh
 ```
 
-Do not edit Cloudflare if the script exits nonzero. Confirm the automatic rollback:
+If the script exits nonzero, confirm the automatic rollback. The unchanged tunnel continues using port 8501:
 
 ```bash
 curl --fail --silent --show-error http://127.0.0.1:8501/_stcore/health
@@ -214,20 +215,20 @@ sudo systemctl is-enabled streamlit.service
 The expected result is `disabled` while the container stack is active.
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:8080/proxy-health
+curl --fail --silent --show-error http://127.0.0.1:8501/proxy-health
 ```
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:8080/health
+curl --fail --silent --show-error http://127.0.0.1:8501/health
 ```
 
 ```bash
-curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/health
+curl --fail --silent --show-error http://127.0.0.1:8501/api/v1/health
 ```
 
-## 8. Change the Cloudflare route, then verify publicly
+## 8. Verify publicly
 
-Only after all local checks pass, change the `andyhub.org` service in the open Cloudflare dashboard from `http://localhost:8501` to `http://localhost:8080` and save it. Do not restart `cloudflared`; token-mode ingress is delivered from the dashboard.
+The tunnel keeps forwarding to `localhost:8501`, which is now owned by the production proxy. Do not open or edit the Cloudflare dashboard and do not restart `cloudflared`.
 
 From a separate terminal or device, verify all three paths:
 
@@ -267,15 +268,15 @@ Never run `docker compose down -v`. Application state is bind-mounted from the e
 
 ## 9. Abort or roll back
 
-If `cutover.sh` fails before the Cloudflare edit, it automatically attempts to stop the containers and restore Streamlit on port 8501. Leave the dashboard route unchanged and verify `https://andyhub.org`.
+If `cutover.sh` fails, it automatically attempts to stop the containers and restore Streamlit on port 8501. The unchanged tunnel follows the restored service automatically. Verify `https://andyhub.org`.
 
-If the dashboard has already been changed, or any acceptance check fails, run the rollback command immediately:
+If any acceptance check fails, run the rollback command immediately:
 
 ```bash
 sudo ./deploy/production/rollback.sh
 ```
 
-Then change the Cloudflare `andyhub.org` service back to `http://localhost:8501`, save it, and verify:
+No Cloudflare action is required before or after rollback. Verify the restored Streamlit endpoint:
 
 ```bash
 curl --fail --silent --show-error https://andyhub.org/_stcore/health
