@@ -2,14 +2,36 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Iterable
 
 from repositories import CardRepository, DeckRepository, NewCard
 
 
-# Preserve the legacy relative path and function signatures used by Streamlit.
-DB_PATH = str(Path("Database") / "reviewer.db")
+def _default_database_path() -> str:
+    """Resolve the same database file the API process uses.
+
+    Streamlit has always opened `Database/reviewer.db` relative to the current
+    directory, so that stays the fallback and its behavior is unchanged. The
+    deployed stack mounts its state elsewhere and configures it through the
+    same environment variables `andyhub_api.settings.Settings` reads. Without
+    honoring them a containerized worker importing this module writes decks to
+    a private path inside the image while the API serves a different file, so
+    generated decks silently disappear.
+    """
+
+    configured = os.environ.get("ANDYHUB_DATABASE_PATH", "").strip()
+    if configured:
+        return configured
+    data_root = os.environ.get("ANDYHUB_DATA_ROOT", "").strip()
+    if data_root:
+        return str(Path(data_root) / "Database" / "reviewer.db")
+    return str(Path("Database") / "reviewer.db")
+
+
+# Preserve the legacy function signatures used by Streamlit.
+DB_PATH = _default_database_path()
 
 
 def _decks() -> DeckRepository:

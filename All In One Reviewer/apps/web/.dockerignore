@@ -1,0 +1,21 @@
+# The builder stage installs dependencies itself with `npm ci` and then runs
+# `COPY . .`. Without this file the host's node_modules would land on top of
+# that install, replacing Alpine binaries with Windows-built ones and breaking
+# the image. Everything here is either rebuilt inside the container or must
+# never reach it.
+
+node_modules
+.next
+out
+
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+.git
+.gitignore
+
+# Local environment overrides must not be baked into an image.
+.env
+.env.*.local
+.env.local

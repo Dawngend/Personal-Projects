@@ -114,7 +114,11 @@ services:
   smoke:
     image: andyhub-api:${ANDYHUB_IMAGE_TAG:-phase5-rehearsal}
     profiles: ["smoke"]
-    command: ["python", "deploy/staging/smoke.py"]
+    # Run as a module, not a file path. Invoking the file puts
+    # /app/deploy/staging on sys.path instead of /app, so smoke.py cannot
+    # import extractor or grading from the repository root. The __init__.py
+    # files under deploy/ exist to make this module form work.
+    command: ["python", "-m", "deploy.staging.smoke"]
     environment:
       SMOKE_BASE_URL: http://proxy:8080
       WORKER_HEALTH_URL: http://worker:8001/health

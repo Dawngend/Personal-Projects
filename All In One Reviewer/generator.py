@@ -113,7 +113,11 @@ def _get_client() -> Groq:
     if not api_key and api_key_file:
         try:
             with open(api_key_file, encoding="utf-8") as source:
-                api_key = source.read()
+                # Strip: Docker secret files and most editors leave a trailing
+                # newline, which would otherwise become part of the key and
+                # fail auth while _groq_is_configured (which does strip)
+                # still reports the key as present.
+                api_key = source.read().strip()
         except OSError:
             pass
     

@@ -21,6 +21,12 @@ from extractor import process_module_file_v2
 from grading import grade_problem_answer
 
 
+def _ignoring_whitespace(value: str) -> str:
+    """Collapse a string to its non-whitespace characters for OCR comparison."""
+
+    return re.sub(r"\s+", "", value)
+
+
 CASES = {
     "CASE18": ("{lambda = 5, 1}", "{1, 5}", "structured"),
     "CASE20": ("t(1, -1, 0)", "(t, -t, 0)", "symbolic"),
@@ -100,9 +106,15 @@ def ocr_grading_smoke() -> dict[str, object]:
             if not match:
                 raise RuntimeError(f"OCR output did not contain {case_id}: {extracted!r}")
             ocr_input = match.group(1)
-            if ocr_input != expected_input:
+            # Compare ignoring whitespace only. Tesseract's spacing varies with
+            # font rendering and version (it read "y= 2" for "y = 2" here), and
+            # the grading ladder normalizes whitespace anyway, so demanding a
+            # byte-exact round trip fails the suite on a cosmetic difference
+            # the system under test handles correctly. Dropped or substituted
+            # characters still fail, which is the corruption worth catching.
+            if _ignoring_whitespace(ocr_input) != _ignoring_whitespace(expected_input):
                 raise RuntimeError(
-                    f"OCR changed {case_id}: expected {expected_input!r}, got {ocr_input!r}"
+                    f"OCR corrupted {case_id}: expected {expected_input!r}, got {ocr_input!r}"
                 )
             result = grade_problem_answer(ocr_input, expected_answer)
             if not result or result.tier != expected_tier:
