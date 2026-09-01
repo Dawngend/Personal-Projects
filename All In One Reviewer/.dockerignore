@@ -1,5 +1,15 @@
 .git
 .gitignore
+# .streamlit holds the live Groq key on a developer machine. It is in
+# .gitignore, so a clean clone never has it, but api.Dockerfile does
+# `COPY . .` over the whole build context: building from a working directory
+# would bake a real credential into an image the runbook tells you to push to
+# a registry. Verified absent from the 2026-09-01 images only because those
+# were built from a fresh clone.
+.streamlit
+.env
+.env.*
+*.pem
 .venv
 __pycache__
 *.pyc
