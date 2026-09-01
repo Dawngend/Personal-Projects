@@ -65,6 +65,8 @@ APP_ROOT="/home/andreipamesa20/Personal-Projects/All In One Reviewer" # new stac
 PERSONAL_PROJECTS_ROOT="/home/andreipamesa20/Personal-Projects"
 ```
 
+These roots are permanently different after the Phase 6 move: `LEGACY_ROOT` holds the live production **data**, while `APP_ROOT` holds the new stack's **code**. Do not move the bind sources into the Personal-Projects checkout or point the data-root override at `APP_ROOT`.
+
 For a first-time checkout, clone `Personal-Projects` into the path above:
 
 ```bash
@@ -259,7 +261,7 @@ Run this block as one command. It fails if any required mount or source is missi
     set -Eeuo pipefail
 
     COMPOSE_BIND_SOURCES="$(
-        sudo env -u ANDYHUB_APP_ROOT docker compose \
+        sudo env -u ANDYHUB_DATA_HOST_ROOT docker compose \
             --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
             config --format json |
         python3 -c '
@@ -507,7 +509,7 @@ PY
     }
 
     COMPOSE_BIND_SOURCES="$(
-        sudo env -u ANDYHUB_APP_ROOT docker compose \
+        sudo env -u ANDYHUB_DATA_HOST_ROOT docker compose \
             --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
             config --format json |
         python3 -c '
@@ -617,7 +619,7 @@ for target in (
     else
         APP_UID="$(id -u andreipamesa20)"
         APP_GID="$(id -g andreipamesa20)"
-        sudo env -u ANDYHUB_APP_ROOT \
+        sudo env -u ANDYHUB_DATA_HOST_ROOT \
             ANDYHUB_UID="${APP_UID}" ANDYHUB_GID="${APP_GID}" \
             docker compose --project-name andyhub-production \
             --file "${APP_ROOT}/deploy/production/compose.production.yaml" \

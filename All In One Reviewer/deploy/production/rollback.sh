@@ -3,6 +3,8 @@ set -uo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly APP_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+# The Phase 6 code checkout and the host's live data are permanently separate.
+readonly DATA_HOST_ROOT="${ANDYHUB_DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}"
 readonly COMPOSE_FILE="${SCRIPT_DIR}/compose.production.yaml"
 readonly COMPOSE_PROJECT="andyhub-production"
 readonly APP_USER="${ANDYHUB_APP_USER:-andreipamesa20}"
@@ -22,7 +24,7 @@ if ! flock --nonblock 9; then
     exit 1
 fi
 
-export ANDYHUB_APP_ROOT="${APP_ROOT}"
+export ANDYHUB_DATA_HOST_ROOT="${DATA_HOST_ROOT}"
 export ANDYHUB_UID="$(id -u "${APP_USER}")"
 export ANDYHUB_GID="$(id -g "${APP_USER}")"
 

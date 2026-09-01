@@ -10,10 +10,11 @@ x-api-environment: &api-environment
   GROQ_API_KEY_FILE: /run/secrets/groq_api_key
 
 x-api-volumes: &api-volumes
-  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/Database:/data/Database
-  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/uploads:/data/uploads
-  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/extraction_cache:/data/extraction_cache
-  - ${ANDYHUB_APP_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/course_brain_db:/data/course_brain_db
+  # HOST directory holding live data, deliberately NOT the Phase 6 code checkout.
+  - ${ANDYHUB_DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/Database:/data/Database
+  - ${ANDYHUB_DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/uploads:/data/uploads
+  - ${ANDYHUB_DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/extraction_cache:/data/extraction_cache
+  - ${ANDYHUB_DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}/course_brain_db:/data/course_brain_db
 
 services:
   # Measured 20-question generation peaks (MiB): worker 347.3, api 81.9,

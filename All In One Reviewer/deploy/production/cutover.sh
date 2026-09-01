@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly APP_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+# The Phase 6 code checkout and the host's live data are permanently separate.
+readonly DATA_HOST_ROOT="${ANDYHUB_DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}"
 readonly COMPOSE_FILE="${SCRIPT_DIR}/compose.production.yaml"
 readonly COMPOSE_PROJECT="andyhub-production"
 readonly PROXY_BASE_URL="http://127.0.0.1:${ANDYHUB_PRODUCTION_PORT:-8501}"
@@ -143,13 +145,13 @@ if ! runuser -u "${APP_USER}" -- test -r /etc/andyhub/groq_api_key; then
 fi
 
 for directory in Database uploads extraction_cache course_brain_db; do
-    [[ -d "${APP_ROOT}/${directory}" ]] || {
-        log "ERROR: required data directory is missing: ${APP_ROOT}/${directory}" >&2
+    [[ -d "${DATA_HOST_ROOT}/${directory}" ]] || {
+        log "ERROR: required data directory is missing: ${DATA_HOST_ROOT}/${directory} (code root: ${APP_ROOT}; data root: ${DATA_HOST_ROOT})" >&2
         exit 1
     }
 done
 
-export ANDYHUB_APP_ROOT="${APP_ROOT}"
+export ANDYHUB_DATA_HOST_ROOT="${DATA_HOST_ROOT}"
 export ANDYHUB_UID="$(id -u "${APP_USER}")"
 export ANDYHUB_GID="$(id -g "${APP_USER}")"
 
