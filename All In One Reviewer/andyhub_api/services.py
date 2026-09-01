@@ -201,7 +201,14 @@ class GenerationService:
             deps = self.dependencies_factory()
             self._update_job(job["id"], stage="extracting", progress=10, message="Extracting selected modules")
             preparation = prepare_custom_deck(
-                [module.filename for module in resolved],
+                # Read by stored_filename (the content hash the upload was
+                # written as), not by the user's display name. uploads/ is the
+                # same directory the legacy Streamlit app filled with files
+                # named after their originals, so a display-name lookup either
+                # missed entirely or, worse, matched a stale legacy file and
+                # built the deck from the wrong document.
+                [module.stored_filename for module in resolved],
+                display_names=[module.filename for module in resolved],
                 extract_file=deps.extract_file,
                 uploads_directory=str(self.settings.uploads_directory),
                 report=lambda _: None,

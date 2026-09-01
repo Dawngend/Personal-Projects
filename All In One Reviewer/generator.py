@@ -476,30 +476,44 @@ class GenerationDependencies:
 def prepare_custom_deck(
     selected_files: list[str],
     *,
+    display_names: list[str] | None = None,
     extract_file: Callable[[str], str] = process_module_file_v2,
     uploads_directory: str = "uploads",
     report: Callable[[str], None] = print,
 ) -> DeckPreparation | None:
-    """Extract selected modules and prepare stable chunks without LLM or storage I/O."""
+    """
+    Extract selected modules and prepare stable chunks without LLM or storage I/O.
+
+    *selected_files* are the names to READ from ``uploads_directory``. The API
+    stores uploads under a content hash, so it passes `stored_filename` here and
+    the user-facing names in *display_names*, which are used for provenance
+    labels and for the persisted deck sources. When *display_names* is omitted
+    the two are the same, which is what the local CLI path wants.
+    """
+
+    if display_names is None:
+        display_names = list(selected_files)
+    if len(display_names) != len(selected_files):
+        raise ValueError("display_names must match selected_files one to one")
 
     report(f"\n[1/4] Processing {len(selected_files)} module(s)...")
     combined_text = ""
-    for filename in selected_files:
+    for filename, display_name in zip(selected_files, display_names):
         file_path = os.path.join(uploads_directory, filename)
         if not os.path.exists(file_path) and os.path.exists(filename):
             file_path = filename
         text = extract_file(file_path)
         if not text.startswith("Error") and not text.startswith("Unsupported"):
-            combined_text += f"\n\n--- Content from {filename} ---\n\n" + text
+            combined_text += f"\n\n--- Content from {display_name} ---\n\n" + text
         else:
-            report(f"  [Warning] Skipping {filename}: {text}")
+            report(f"  [Warning] Skipping {display_name}: {text}")
     if len(combined_text) < 50:
         report("  [Abort] Not enough valid text extracted to generate meaningful questions.")
         return None
     chunks = tuple(_chunk_text(combined_text))
     report(f"  Extracted {len(combined_text):,} characters from all selected modules.")
     report(f"\n[2/4] Split into {len(chunks)} chunk(s) (max {MAX_CHUNK_CHARS:,} chars each).")
-    return DeckPreparation(tuple(selected_files), combined_text, chunks)
+    return DeckPreparation(tuple(display_names), combined_text, chunks)
 
 
 def validate_generated_cards(raw_cards: list[dict], total_questions: int) -> list[dict]:
