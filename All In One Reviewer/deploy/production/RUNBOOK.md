@@ -496,6 +496,29 @@ curl --fail --silent --show-error https://andyhub.org/api/v1/health
 curl --fail --silent --show-error --output /dev/null https://andyhub.org/
 ```
 
+**Confirm the stack is serving the REAL database, not an empty one.** Every check above passes against a brand-new empty `reviewer.db`: the repository runs `CREATE TABLE IF NOT EXISTS` at construction, so a bind mount pointing somewhere wrong produces a valid, empty database rather than an error, and `/api/v1/health` reports `database: ok` either way. That is the failure mode commit `d0af481` was written to prevent, and this section could not detect it.
+
+Record the deck and card counts BEFORE cutover:
+
+```bash
+sudo runuser -u andreipamesa20 -- python3 -c "
+import sqlite3
+db = sqlite3.connect('${DATA_HOST_ROOT}/Database/reviewer.db')
+print('decks', db.execute('SELECT COUNT(*) FROM decks').fetchone()[0])
+print('cards', db.execute('SELECT COUNT(*) FROM cards').fetchone()[0])
+"
+```
+
+After cutover, ask the running API for the same figures through the proxy and confirm they match. A zero here, or any drop, means the containers mounted the wrong data root: roll back and re-check `ANDYHUB_DATA_HOST_ROOT` before doing anything else.
+
+```bash
+curl --fail --silent --show-error http://127.0.0.1:8501/api/v1/decks | python3 -c "
+import json, sys
+decks = json.load(sys.stdin)
+print('decks visible to the API:', len(decks if isinstance(decks, list) else decks.get('items', [])))
+"
+```
+
 Then complete the desktop and mobile acceptance pass: upload a mixed document, generate a deck, complete every card type, reload the workspace, and confirm the deck and quiz state persist.
 
 Monitor memory and restarts during one real generation:
@@ -712,11 +735,23 @@ for target in (
     else
         APP_UID="$(id -u andreipamesa20)"
         APP_GID="$(id -g andreipamesa20)"
-        sudo env -u ANDYHUB_DATA_HOST_ROOT \
+        # --no-build is not optional here. `up` builds any image it cannot
+        # find, and if the cutover used the registry path the only images on
+        # this VM are the ghcr.io ones, so the local default tags are absent.
+        # Without this flag a restore silently starts a build on a box that
+        # cannot finish one, with the stack already down. Fail loudly instead.
+        #
+        # ANDYHUB_DATA_HOST_ROOT is passed through rather than unset: if
+        # production was cut over with an override, unsetting it here restarts
+        # the stack against a DIFFERENT database and reports success.
+        sudo env \
+            ANDYHUB_DATA_HOST_ROOT="${DATA_HOST_ROOT:-/home/andreipamesa20/School-Works/All In One Reviewer}" \
             ANDYHUB_UID="${APP_UID}" ANDYHUB_GID="${APP_GID}" \
+            ${ANDYHUB_API_IMAGE:+ANDYHUB_API_IMAGE="${ANDYHUB_API_IMAGE}"} \
+            ${ANDYHUB_WEB_IMAGE:+ANDYHUB_WEB_IMAGE="${ANDYHUB_WEB_IMAGE}"} \
             docker compose --project-name andyhub-production \
             --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
-            up --detach --remove-orphans
+            up --detach --no-build --remove-orphans
 
         RESTORE_HEALTHY=0
         for _ in {1..84}; do
