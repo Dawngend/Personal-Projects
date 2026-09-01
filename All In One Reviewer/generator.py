@@ -32,6 +32,22 @@ MODEL_NAME = os.environ.get("ANDYHUB_GROQ_MODEL", "").strip() or "openai/gpt-oss
 
 MAX_CHUNK_CHARS = 12_000
 
+# Completion budget for one chunk's JSON payload.
+#
+# This was previously unset, so the provider default applied. A truncated
+# response is not a partial loss: the JSON fails to parse, `_query_groq`
+# returns an empty list, and EVERY question in that chunk is discarded. With
+# `questions_per_chunk = ceil(total / len(chunks))`, losing one chunk of two
+# turns a 20-question request into 10 valid cards, which is exactly the defect
+# measured on 2026-08-30.
+#
+# A situational question with four options and an explanation runs roughly
+# 250-400 tokens, so 10 per chunk needs about 4k. 8192 leaves headroom without
+# approaching the model's limit.
+MAX_COMPLETION_TOKENS = int(
+    os.environ.get("ANDYHUB_MAX_COMPLETION_TOKENS", "").strip() or 8192
+)
+
 QUESTION_STYLES = {
     "multiple_choice": "Multiple Choice",
     "enumeration": "Enumeration",
@@ -206,6 +222,67 @@ def _strip_json_fences(raw: str) -> str:
 
 # ── LLM interaction ───────────────────────────────────────────────────────────
 
+def _salvage_questions(raw_text: str) -> list[dict]:
+    """
+    Recover whole question objects from a response whose JSON does not parse.
+
+    A truncated completion cuts off mid-object, so `json.loads` rejects the
+    entire payload and the caller would otherwise discard a chunk's worth of
+    perfectly good questions. Scan the `questions` array and return every
+    object that closed cleanly, dropping only the incomplete tail.
+
+    Returns an empty list when nothing can be recovered, so the caller's
+    behaviour is unchanged in the genuinely unusable case.
+    """
+    marker = raw_text.find('"questions"')
+    if marker == -1:
+        return []
+    start = raw_text.find("[", marker)
+    if start == -1:
+        return []
+
+    recovered: list[dict] = []
+    depth = 0
+    in_string = False
+    escaped = False
+    object_start = -1
+
+    for position in range(start + 1, len(raw_text)):
+        character = raw_text[position]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+
+        if character == '"':
+            in_string = True
+        elif character == "{":
+            if depth == 0:
+                object_start = position
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0 and object_start != -1:
+                fragment = raw_text[object_start : position + 1]
+                try:
+                    candidate = json.loads(fragment)
+                except json.JSONDecodeError:
+                    pass
+                else:
+                    if isinstance(candidate, dict):
+                        recovered.append(candidate)
+                object_start = -1
+        elif character == "]" and depth == 0:
+            break
+
+    return recovered
+
+
 def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMPT) -> list[dict]:
     """
     Send a single *text_chunk* to Groq and return the parsed list of
@@ -225,6 +302,7 @@ def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMP
             ],
             response_format={"type": "json_object"},
             temperature=0.7,
+            max_completion_tokens=MAX_COMPLETION_TOKENS,
         )
 
         raw_text = response.choices[0].message.content
@@ -246,8 +324,15 @@ def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMP
         # working directory raised PermissionError under the container, whose
         # /app is not writable, so a single unparseable chunk aborted the whole
         # generation after other chunks had already produced valid cards.
-        print(f"  [Warning] JSON parse error: {e}. Skipping this chunk.")
         raw = raw_text if "raw_text" in locals() else "No response text"
+        salvaged = _salvage_questions(raw) if raw != "No response text" else []
+        if salvaged:
+            print(
+                f"  [Warning] JSON parse error: {e}. "
+                f"Recovered {len(salvaged)} complete question(s) from the truncated response."
+            )
+        else:
+            print(f"  [Warning] JSON parse error: {e}. Skipping this chunk.")
         try:
             debug_dir = Path(
                 os.environ.get("ANDYHUB_EXTRACTION_CACHE_DIR", tempfile.gettempdir())
@@ -258,7 +343,7 @@ def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMP
             print(f"  [Warning] Raw response saved to {debug_path}.")
         except OSError as write_error:
             print(f"  [Warning] Could not save the raw response: {write_error}")
-        return []
+        return salvaged
     except Exception as e:
         print(f"  [Error] Groq request failed using {MODEL_NAME}: {e}")
         return []
@@ -420,12 +505,16 @@ def prepare_custom_deck(
 def validate_generated_cards(raw_cards: list[dict], total_questions: int) -> list[dict]:
     """Trim provider output and retain only cards matching the persisted contract."""
 
-    limited_cards = raw_cards[:total_questions]
-    return [
+    # Validate first, then trim. Trimming first meant a malformed card inside
+    # the first `total_questions` entries reduced the deck below the requested
+    # size even when valid cards were waiting just past the cut, so a request
+    # for 20 could return 18 while 20 good cards existed.
+    valid_cards = [
         card
-        for index, card in enumerate(limited_cards, start=1)
+        for index, card in enumerate(raw_cards, start=1)
         if _validate_card(card, index)
     ]
+    return valid_cards[:total_questions]
 
 
 def persist_valid_cards(
@@ -503,7 +592,13 @@ def orchestrate_custom_deck(
     report(f"\n  Deck '{deck_name}' created successfully by Andy.")
     report(f"  Deck ID       : {deck_id}")
     report(f"  Cards saved   : {len(valid_cards)}")
-    report(f"  Cards skipped : {min(len(raw_cards), total_questions) - len(valid_cards)}")
+    report(f"  Cards skipped : {len(raw_cards) - len(valid_cards)}")
+    if len(valid_cards) < total_questions:
+        report(
+            f"  [Notice] {total_questions} questions were requested but only "
+            f"{len(valid_cards)} valid cards were produced from "
+            f"{len(raw_cards)} provider responses."
+        )
     return deck_id
 
 
