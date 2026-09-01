@@ -248,15 +248,9 @@ Stop if this shows any listener other than the expected Streamlit process. `cuto
 
 Make sure nobody is generating a deck or using the study session. Resolve the live source paths from the API bind mounts in `compose.production.yaml`; do not assume that they live under the new checkout. The Compose defaults intentionally point at `LEGACY_ROOT`, which is the live Streamlit state and rollback target.
 
-This backup requires the SQLite command-line client. If `sqlite3 --version` reports that the command is missing, install it before continuing:
+The VM does not have the `sqlite3` command-line client, and its EOL Ubuntu package archives are not a reliable installation source. Do not add it as a cutover dependency. `/usr/bin/python3` is already present and exposes SQLite's C-level online backup API through the standard-library `sqlite3` module.
 
-```bash
-sudo apt-get update
-sudo apt-get install --yes sqlite3
-sqlite3 --version
-```
-
-Do not skip the database snapshot if `sqlite3` is unavailable. `repositories.py` enables WAL mode, so copying or tarring the live `reviewer.db` file can omit committed WAL transactions or capture an inconsistent page. The block below uses SQLite's online backup API, falls back to `VACUUM INTO`, and refuses to create an archive unless the snapshot passes `PRAGMA integrity_check`.
+`repositories.py` enables WAL mode, so copying or tarring the live `reviewer.db` file can omit committed WAL transactions or capture an inconsistent page. The block below opens the source read-only, calls `Connection.backup()` to include committed WAL contents safely even with a concurrent writer, and refuses to create an archive unless the resulting snapshot returns exactly `ok` from `PRAGMA integrity_check`.
 
 Run this block as one command. It fails if any required mount or source is missing, writes the timestamped archive outside every Git checkout, and prints its path and byte size:
 
@@ -317,25 +311,28 @@ for target in (
     sudo install -d -m 0700 "${BACKUP_STAGING}/Database"
     SQLITE_SNAPSHOT="${BACKUP_STAGING}/Database/reviewer.db"
 
-    if ! sudo sqlite3 "${DATABASE_PATH}" ".backup '${SQLITE_SNAPSHOT}'"; then
-        echo "SQLite .backup failed; trying VACUUM INTO" >&2
-        sudo rm -f -- "${SQLITE_SNAPSHOT}"
-        if ! sudo sqlite3 "${DATABASE_PATH}" \
-            "VACUUM INTO '${SQLITE_SNAPSHOT}';"; then
-            echo "ERROR: neither SQLite .backup nor VACUUM INTO produced a snapshot" >&2
-            exit 1
-        fi
-    fi
-
-    INTEGRITY_RESULT="$(
-        sudo sqlite3 -batch -noheader "${SQLITE_SNAPSHOT}" \
-            "PRAGMA integrity_check;"
-    )"
-    if [[ "${INTEGRITY_RESULT}" != "ok" ]]; then
-        printf 'ERROR: snapshot integrity_check returned: %s\n' \
-            "${INTEGRITY_RESULT}" >&2
+    [[ -x /usr/bin/python3 ]] || {
+        echo "ERROR: /usr/bin/python3 is required for the SQLite backup" >&2
         exit 1
-    fi
+    }
+    sudo /usr/bin/python3 - "${DATABASE_PATH}" "${SQLITE_SNAPSHOT}" <<'PY'
+import sqlite3
+import sys
+
+source, staging = sys.argv[1:3]
+src = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
+dst = sqlite3.connect(staging)
+try:
+    with dst:
+        src.backup(dst)
+    row = dst.execute("PRAGMA integrity_check").fetchone()[0]
+finally:
+    dst.close()
+    src.close()
+if row != "ok":
+    print(f"snapshot integrity_check returned: {row}", file=sys.stderr)
+sys.exit(0 if row == "ok" else 1)
+PY
 
     sudo tar --create --gzip --file "${BACKUP_PARTIAL}" \
         --directory "${BACKUP_STAGING}" "Database/reviewer.db" \
@@ -486,9 +483,27 @@ The listing must contain `Database/reviewer.db`, `uploads/`, `extraction_cache/`
     set -Eeuo pipefail
 
     [[ -f "${RESTORE_ARCHIVE}" ]]
-    command -v sqlite3 >/dev/null 2>&1 || {
-        echo "ERROR: sqlite3 is required; install it as shown in section 6b" >&2
+    [[ -x /usr/bin/python3 ]] || {
+        echo "ERROR: /usr/bin/python3 is required for SQLite verification" >&2
         exit 1
+    }
+
+    verify_sqlite_integrity() {
+        local database_path=$1
+        sudo /usr/bin/python3 - "${database_path}" <<'PY'
+import sqlite3
+import sys
+
+database_path = sys.argv[1]
+database = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+try:
+    row = database.execute("PRAGMA integrity_check").fetchone()[0]
+finally:
+    database.close()
+if row != "ok":
+    print(f"integrity_check returned: {row}", file=sys.stderr)
+sys.exit(0 if row == "ok" else 1)
+PY
     }
 
     COMPOSE_BIND_SOURCES="$(
@@ -539,16 +554,8 @@ for target in (
     [[ -d "${RESTORE_STAGING}/extraction_cache" ]]
     [[ -d "${RESTORE_STAGING}/course_brain_db" ]]
 
-    STAGED_INTEGRITY="$(
-        sudo sqlite3 -batch -noheader \
-            "${RESTORE_STAGING}/Database/reviewer.db" \
-            "PRAGMA integrity_check;"
-    )"
-    if [[ "${STAGED_INTEGRITY}" != "ok" ]]; then
-        printf 'ERROR: archived database integrity_check returned: %s\n' \
-            "${STAGED_INTEGRITY}" >&2
-        exit 1
-    fi
+    verify_sqlite_integrity \
+        "${RESTORE_STAGING}/Database/reviewer.db"
 
     STREAMLIT_WAS_ACTIVE=0
     STACK_WAS_ACTIVE=0
@@ -601,15 +608,7 @@ for target in (
     sudo mv -- "${RESTORE_STAGING}/course_brain_db" \
         "${COURSE_BRAIN_PATH}"
 
-    RESTORED_INTEGRITY="$(
-        sudo sqlite3 -batch -noheader "${DATABASE_PATH}" \
-            "PRAGMA integrity_check;"
-    )"
-    if [[ "${RESTORED_INTEGRITY}" != "ok" ]]; then
-        printf 'ERROR: restored database integrity_check returned: %s\n' \
-            "${RESTORED_INTEGRITY}" >&2
-        exit 1
-    fi
+    verify_sqlite_integrity "${DATABASE_PATH}"
 
     if [[ ${STREAMLIT_WAS_ACTIVE} -eq 1 ]]; then
         sudo systemctl enable --now streamlit.service
