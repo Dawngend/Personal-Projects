@@ -139,6 +139,7 @@ def _get_client() -> Groq:
     """
     api_key = os.environ.get("GROQ_API_KEY")
     api_key_file = os.environ.get("GROQ_API_KEY_FILE")
+    secret_file_failed = False
     if not api_key and api_key_file:
         try:
             with open(api_key_file, encoding="utf-8") as source:
@@ -147,11 +148,22 @@ def _get_client() -> Groq:
                 # fail auth while _groq_is_configured (which does strip)
                 # still reports the key as present.
                 api_key = source.read().strip()
-        except OSError:
-            pass
-    
-    # Fallback to loading Streamlit secrets if running locally
-    if not api_key:
+        except OSError as read_error:
+            # Swallowing this silently let a container whose mounted secret was
+            # unreadable (the root-owned-secret failure of a95473d) fall through
+            # to a key baked into the image, defeating the permission guard the
+            # cutover checks. Fail loudly and do not fall back.
+            secret_file_failed = True
+            print(
+                f"  [Error] GROQ_API_KEY_FILE is set to {api_key_file} but could not be read: "
+                f"{read_error}. Refusing to fall back to any other key source."
+            )
+
+    # Fallback to local Streamlit secrets, for developer machines only. It is
+    # deliberately skipped whenever GROQ_API_KEY_FILE was configured: in a
+    # deployed container that variable is the single intended source, and a
+    # silent fallback there hides a real misconfiguration.
+    if not api_key and not api_key_file and not secret_file_failed:
         try:
             import tomllib  # Built-in in Python 3.11+
             secrets_path = os.path.join(".streamlit", "secrets.toml")
