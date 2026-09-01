@@ -182,6 +182,17 @@ class ApiRepository:
         advance with card_not_resolved and permanently skews the cross-session times_missed count.
         """
         with self._connection() as connection:
+            # Take the write lock BEFORE the read. submit_answer is a sync
+            # endpoint, so FastAPI runs it in the threadpool and two in-flight
+            # requests execute in parallel. On a deferred connection the SELECT
+            # holds no lock, so a double-submit had both callers see no row,
+            # both INSERT, and one raise IntegrityError on the composite
+            # primary key as an uncaught 500 -- or, on the update path, both
+            # compute first_miss and double-count cards.times_missed, which is
+            # cross-session and permanent. busy_timeout=5000 makes the loser
+            # wait rather than fail.
+            if not connection.in_transaction:
+                connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 "SELECT status, wrong_count, revealed FROM quiz_attempts WHERE session_id = ? AND card_id = ?",
                 (session_id, card_id),
