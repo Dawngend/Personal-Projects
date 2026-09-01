@@ -45,6 +45,39 @@ production_stack_is_healthy() {
     done
 }
 
+stack_images_are_current() {
+    # "Healthy" says nothing about WHICH image is running. `docker load`
+    # replaces the phase6-production tag with a new image id while the running
+    # containers keep the old one by id, stay healthy, and satisfy every check
+    # above. Without this, a redeploy exits 0 having deployed nothing, which is
+    # exactly what happened on 2026-09-01 and pushed the operator into a
+    # hand-rolled `compose up` that took the API down.
+    local service container_id running_image desired_ref desired_image config_json
+
+    config_json=$(compose config --format json) || return 1
+
+    for service in api worker web proxy; do
+        container_id=$(compose ps --quiet "${service}")
+        [[ -n ${container_id} ]] || return 1
+
+        running_image=$(docker inspect --format '{{.Image}}' "${container_id}") || return 1
+
+        desired_ref=$(printf '%s' "${config_json}" | python3 -c '
+import json
+import sys
+
+try:
+    print(json.load(sys.stdin)["services"][sys.argv[1]]["image"])
+except Exception:
+    raise SystemExit(1)
+' "${service}") || return 1
+
+        desired_image=$(docker image inspect --format '{{.Id}}' "${desired_ref}" 2>/dev/null) || return 1
+
+        [[ ${running_image} == "${desired_image}" ]] || return 1
+    done
+}
+
 stop_compose_stack() {
     local -a running_containers=()
 
@@ -215,14 +248,23 @@ fi
 
 compose config --quiet
 
+redeploy_in_place=0
 if production_stack_is_healthy; then
-    log "the production stack is already healthy; ensuring Streamlit stays disabled"
-    streamlit_stop_started=1
-    systemctl disable --now streamlit.service
-    cutover_succeeded=1
-    exit 0
+    if stack_images_are_current; then
+        log "the production stack is already healthy on the current images; ensuring Streamlit stays disabled"
+        streamlit_stop_started=1
+        systemctl disable --now streamlit.service
+        cutover_succeeded=1
+        exit 0
+    fi
+    # Healthy but stale. Recreate in place: Streamlit is already stopped and
+    # the proxy container owns 8501, so the Streamlit handoff below must be
+    # skipped or its unmanaged-listener guard aborts on our own proxy.
+    log "the production stack is healthy but running STALE images; recreating in place"
+    redeploy_in_place=1
 fi
 
+if [[ ${redeploy_in_place} -eq 0 ]]; then
 if systemctl is-active --quiet streamlit.service; then
     if ! streamlit_is_healthy; then
         log "ERROR: streamlit.service is active but its health endpoint is failing; leaving it untouched" >&2
@@ -247,6 +289,7 @@ if port_8501_is_listening; then
     log "ERROR: port 8501 did not become free after Streamlit stopped" >&2
     exit 1
 fi
+fi  # end: not a redeploy_in_place
 
 if [[ ${SKIP_BUILD} == "1" ]]; then
     log "starting the 704 MB production stack from pre-loaded images"
