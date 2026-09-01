@@ -69,6 +69,16 @@ class ApiRepository:
                 );
                 """
             )
+            # Additive migration: CREATE TABLE IF NOT EXISTS never alters an
+            # existing table, so a database created before the poison-job
+            # ceiling has no attempts column and every claim would raise.
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(generation_jobs)")
+            }
+            if "attempts" not in columns:
+                connection.execute(
+                    "ALTER TABLE generation_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
+                )
 
     def list_modules(self) -> list[StoredModule]:
         with self._connection() as connection:
@@ -118,21 +128,53 @@ class ApiRepository:
             row = connection.execute("SELECT * FROM generation_jobs WHERE id = ?", (job_id,)).fetchone()
         return dict(row) if row else None
 
+    #: How many times one job may be claimed before it is treated as poison.
+    #: Reclaiming 'running' jobs is what makes a worker restart resume work, but
+    #: without a ceiling a job that reliably kills the worker (an OCR-heavy PDF
+    #: exceeding mem_limit 480m, say) is re-claimed forever. It is also always
+    #: the OLDEST row, so it blocks every later job while the worker restarts in
+    #: a loop and its health endpoint keeps answering: the queue is dead and
+    #: every check stays green.
+    MAX_JOB_ATTEMPTS = 3
+
     def claim_next_job(self) -> dict[str, Any] | None:
         """Atomically claim work; running jobs are reclaimed after a process restart."""
         with self._connection() as connection:
             connection.row_factory = sqlite3.Row
-            row = connection.execute(
-                "SELECT id FROM generation_jobs WHERE status IN ('queued', 'running') ORDER BY created_at LIMIT 1"
-            ).fetchone()
-            if not row:
-                return None
-            connection.execute(
-                "UPDATE generation_jobs SET status = 'running', stage = 'extracting', message = 'Preparing uploaded modules', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (row["id"],),
-            )
-            claimed = connection.execute("SELECT * FROM generation_jobs WHERE id = ?", (row["id"],)).fetchone()
-        return dict(claimed)
+            # Serialize the claim: two workers must not take the same row.
+            if not connection.in_transaction:
+                connection.execute("BEGIN IMMEDIATE")
+            while True:
+                row = connection.execute(
+                    "SELECT id, attempts FROM generation_jobs"
+                    " WHERE status IN ('queued', 'running') ORDER BY created_at LIMIT 1"
+                ).fetchone()
+                if not row:
+                    return None
+
+                if row["attempts"] >= self.MAX_JOB_ATTEMPTS:
+                    connection.execute(
+                        "UPDATE generation_jobs SET status = 'failed', stage = 'failed',"
+                        " message = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (
+                            "Generation failed repeatedly and was stopped",
+                            f"Job was claimed {row['attempts']} times without completing. "
+                            "It is treated as poison so the queue can continue.",
+                            row["id"],
+                        ),
+                    )
+                    continue
+
+                connection.execute(
+                    "UPDATE generation_jobs SET status = 'running', stage = 'extracting',"
+                    " message = 'Preparing uploaded modules', attempts = attempts + 1,"
+                    " updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row["id"],),
+                )
+                claimed = connection.execute(
+                    "SELECT * FROM generation_jobs WHERE id = ?", (row["id"],)
+                ).fetchone()
+                return dict(claimed)
 
     def update_job(self, job_id: str, **fields: Any) -> None:
         if not fields:
