@@ -28,6 +28,27 @@ export ANDYHUB_DATA_HOST_ROOT="${DATA_HOST_ROOT}"
 export ANDYHUB_UID="$(id -u "${APP_USER}")"
 export ANDYHUB_GID="$(id -g "${APP_USER}")"
 
+# Verify the rollback TARGET is installable before destroying the thing we are
+# rolling back from. `docker compose down` below removes all four containers
+# and frees 8501; if streamlit.service turns out to be missing or unloadable we
+# would already have torn down a degraded-but-serving stack and have nothing to
+# fall back to. Check first, fail with the site still up.
+if ! systemctl cat streamlit.service >/dev/null 2>&1; then
+    log "CRITICAL: streamlit.service is not installed; refusing to tear down the container stack" >&2
+    log "          install it first: sudo install -m 0644 deploy/production/streamlit.service /etc/systemd/system/" >&2
+    exit 1
+fi
+
+legacy_entrypoint="${DATA_HOST_ROOT}/app.py"
+legacy_python="${DATA_HOST_ROOT}/.venv/bin/python"
+for required in "${legacy_entrypoint}" "${legacy_python}"; do
+    if [[ ! -e ${required} ]]; then
+        log "CRITICAL: the Streamlit rollback target is incomplete: ${required} is missing" >&2
+        log "          refusing to tear down the container stack with no working fallback" >&2
+        exit 1
+    fi
+done
+
 stack_status=0
 if command -v docker >/dev/null 2>&1; then
     if docker compose version >/dev/null 2>&1; then
@@ -40,16 +61,25 @@ if command -v docker >/dev/null 2>&1; then
         log "Docker Compose is unavailable; using the project-label fallback" >&2
     fi
 
-    mapfile -t running_containers < <(
-        docker ps --quiet --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}"
-    )
-    if [[ ${#running_containers[@]} -gt 0 ]]; then
+    # `docker ps` failing must NOT read as "no containers are running". A wedged
+    # daemon is exactly the condition that makes an operator reach for rollback,
+    # and treating its error as an empty list would start Streamlit while the
+    # old containers still hold port 8501.
+    if ! container_ids=$(docker ps --quiet --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}"); then
+        log "CRITICAL: could not query Docker for running containers; refusing to start Streamlit blind" >&2
+        exit 1
+    fi
+    mapfile -t running_containers <<<"${container_ids}"
+    if [[ ${#running_containers[@]} -gt 0 && -n ${running_containers[0]} ]]; then
         docker stop "${running_containers[@]}" >/dev/null || stack_status=$?
     fi
-    mapfile -t running_containers < <(
-        docker ps --quiet --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}"
-    )
-    if [[ ${#running_containers[@]} -gt 0 ]]; then
+
+    if ! container_ids=$(docker ps --quiet --filter "label=com.docker.compose.project=${COMPOSE_PROJECT}"); then
+        log "CRITICAL: could not re-query Docker after stopping containers" >&2
+        exit 1
+    fi
+    mapfile -t running_containers <<<"${container_ids}"
+    if [[ ${#running_containers[@]} -gt 0 && -n ${running_containers[0]} ]]; then
         log "CRITICAL: containers are still running; refusing to start Streamlit concurrently" >&2
         exit 1
     fi
@@ -58,9 +88,21 @@ elif systemctl is-active --quiet docker.service; then
     exit 1
 fi
 
+# Deliberately NOT an abort. The authoritative check above already proved that
+# no project container is running, so reaching this point with a nonzero
+# stack_status means `docker stop` complained about something benign, typically
+# a container that had already exited. Aborting here left the containers down
+# AND Streamlit never started, turning a recoverable rollback into an outage.
 if [[ ${stack_status} -ne 0 ]]; then
-    log "CRITICAL: the production containers could not be stopped" >&2
-    exit "${stack_status}"
+    log "note: docker stop reported ${stack_status}, but no project container is running; continuing"
+fi
+
+# Nothing should hold 8501 now. If something does, starting Streamlit would
+# fail to bind and report a confusing unit error instead of the real cause.
+if ss --tcp --listening --no-header "sport = :8501" 2>/dev/null | grep --quiet .; then
+    log "CRITICAL: port 8501 is still held after the stack was stopped; not starting Streamlit" >&2
+    ss --tcp --listening --processes "sport = :8501" >&2 || true
+    exit 1
 fi
 
 log "enabling and starting streamlit.service"
