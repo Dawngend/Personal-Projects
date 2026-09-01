@@ -248,6 +248,16 @@ Stop if this shows any listener other than the expected Streamlit process. `cuto
 
 Make sure nobody is generating a deck or using the study session. Resolve the live source paths from the API bind mounts in `compose.production.yaml`; do not assume that they live under the new checkout. The Compose defaults intentionally point at `LEGACY_ROOT`, which is the live Streamlit state and rollback target.
 
+This backup requires the SQLite command-line client. If `sqlite3 --version` reports that the command is missing, install it before continuing:
+
+```bash
+sudo apt-get update
+sudo apt-get install --yes sqlite3
+sqlite3 --version
+```
+
+Do not skip the database snapshot if `sqlite3` is unavailable. `repositories.py` enables WAL mode, so copying or tarring the live `reviewer.db` file can omit committed WAL transactions or capture an inconsistent page. The block below uses SQLite's online backup API, falls back to `VACUUM INTO`, and refuses to create an archive unless the snapshot passes `PRAGMA integrity_check`.
+
 Run this block as one command. It fails if any required mount or source is missing, writes the timestamped archive outside every Git checkout, and prints its path and byte size:
 
 ```bash
@@ -281,29 +291,65 @@ for target in (
     mapfile -t LIVE_PATHS <<<"${COMPOSE_BIND_SOURCES}"
     [[ ${#LIVE_PATHS[@]} -eq 4 ]]
 
-    DATABASE_PATH="$(realpath -e "${LIVE_PATHS[0]}")"
+    DATABASE_PATH="$(realpath -e "${LIVE_PATHS[0]}/reviewer.db")"
     UPLOADS_PATH="$(realpath -e "${LIVE_PATHS[1]}")"
     EXTRACTION_CACHE_PATH="$(realpath -e "${LIVE_PATHS[2]}")"
     COURSE_BRAIN_PATH="$(realpath -e "${LIVE_PATHS[3]}")"
-    [[ -f "${DATABASE_PATH}/reviewer.db" ]]
+    [[ -f "${DATABASE_PATH}" ]]
+    [[ "$(basename "${UPLOADS_PATH}")" == "uploads" ]]
+    [[ "$(basename "${EXTRACTION_CACHE_PATH}")" == "extraction_cache" ]]
+    [[ "$(basename "${COURSE_BRAIN_PATH}")" == "course_brain_db" ]]
 
     BACKUP_ROOT="/home/andreipamesa20/andyhub-backups"
     BACKUP_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
     BACKUP_ARCHIVE="${BACKUP_ROOT}/andyhub-production-${BACKUP_TIMESTAMP}.tar.gz"
+    BACKUP_PARTIAL="${BACKUP_ARCHIVE}.partial"
     sudo install -d -m 0700 "${BACKUP_ROOT}"
 
-    sudo tar --create --gzip --file "${BACKUP_ARCHIVE}" --directory / -- \
-        "${DATABASE_PATH#/}" \
-        "${UPLOADS_PATH#/}" \
-        "${EXTRACTION_CACHE_PATH#/}" \
-        "${COURSE_BRAIN_PATH#/}"
+    BACKUP_STAGING="$(
+        sudo mktemp --directory \
+            --tmpdir="${BACKUP_ROOT}" \
+            ".andyhub-backup-${BACKUP_TIMESTAMP}.XXXXXX"
+    )"
+    [[ "${BACKUP_STAGING}" == "${BACKUP_ROOT}/.andyhub-backup-${BACKUP_TIMESTAMP}."* ]]
+    sudo chmod 0700 "${BACKUP_STAGING}"
+    trap 'sudo rm -rf -- "${BACKUP_STAGING}"; sudo rm -f -- "${BACKUP_PARTIAL}"' EXIT
+    sudo install -d -m 0700 "${BACKUP_STAGING}/Database"
+    SQLITE_SNAPSHOT="${BACKUP_STAGING}/Database/reviewer.db"
+
+    if ! sudo sqlite3 "${DATABASE_PATH}" ".backup '${SQLITE_SNAPSHOT}'"; then
+        echo "SQLite .backup failed; trying VACUUM INTO" >&2
+        sudo rm -f -- "${SQLITE_SNAPSHOT}"
+        if ! sudo sqlite3 "${DATABASE_PATH}" \
+            "VACUUM INTO '${SQLITE_SNAPSHOT}';"; then
+            echo "ERROR: neither SQLite .backup nor VACUUM INTO produced a snapshot" >&2
+            exit 1
+        fi
+    fi
+
+    INTEGRITY_RESULT="$(
+        sudo sqlite3 -batch -noheader "${SQLITE_SNAPSHOT}" \
+            "PRAGMA integrity_check;"
+    )"
+    if [[ "${INTEGRITY_RESULT}" != "ok" ]]; then
+        printf 'ERROR: snapshot integrity_check returned: %s\n' \
+            "${INTEGRITY_RESULT}" >&2
+        exit 1
+    fi
+
+    sudo tar --create --gzip --file "${BACKUP_PARTIAL}" \
+        --directory "${BACKUP_STAGING}" "Database/reviewer.db" \
+        --directory "$(dirname "${UPLOADS_PATH}")" "uploads" \
+        --directory "$(dirname "${EXTRACTION_CACHE_PATH}")" "extraction_cache" \
+        --directory "$(dirname "${COURSE_BRAIN_PATH}")" "course_brain_db"
+    sudo mv -- "${BACKUP_PARTIAL}" "${BACKUP_ARCHIVE}"
 
     printf 'Backup archive: %s\n' "${BACKUP_ARCHIVE}"
     sudo stat --format 'Archive size: %s bytes' "${BACKUP_ARCHIVE}"
 )
 ```
 
-The subshell must exit successfully and print a nonzero archive size. Do not proceed with cutover if this step fails.
+The subshell must exit successfully and print a nonzero archive size. Do not proceed with cutover if this step fails. If production data is later corrupted, use the restore procedure in section 9b. `rollback.sh` cannot restore data.
 
 ## 7. Run the local cutover
 
@@ -384,6 +430,8 @@ Never run `docker compose down -v`. Application state is bind-mounted from the e
 
 If `cutover.sh` fails, it automatically attempts to stop the containers and restore Streamlit on port 8501. The unchanged tunnel follows the restored service automatically. Verify `https://andyhub.org`.
 
+Rollback changes which runtime is serving. It does not restore the database, uploads, extraction cache, or course memory. If any of those are corrupted, follow section 9b instead of treating `rollback.sh` as data recovery.
+
 If any acceptance check fails, run the rollback command immediately:
 
 ```bash
@@ -409,3 +457,192 @@ sudo journalctl -u streamlit.service -n 100 --no-pager
 ```
 
 Do not delete containers, images, data directories, the swapfile, the Cloudflare unit, or either secret file while diagnosing. The rollback script is idempotent and safe to run again.
+
+## 9b. Restore production data from a backup archive
+
+This is the **only recovery path from production data corruption**. `rollback.sh` restores the legacy service, not the data. A restore replaces the database, uploads, extraction cache, and course memory, so select the archive deliberately and keep the automatic pre-restore quarantine until the restored runtime has passed acceptance.
+
+List the available archives outside the repositories:
+
+```bash
+BACKUP_ROOT="/home/andreipamesa20/andyhub-backups"
+sudo find "${BACKUP_ROOT}" -maxdepth 1 -type f \
+    -name 'andyhub-production-*.tar.gz' \
+    -printf '%TY-%Tm-%Td %TH:%TM:%TS %s bytes %p\n' | sort
+```
+
+Set the exact archive selected from that output, then confirm its contents before stopping anything:
+
+```bash
+RESTORE_ARCHIVE="/home/andreipamesa20/andyhub-backups/andyhub-production-YYYYMMDDTHHMMSSZ.tar.gz"
+sudo test -f "${RESTORE_ARCHIVE}"
+sudo tar --list --gzip --file "${RESTORE_ARCHIVE}"
+```
+
+The listing must contain `Database/reviewer.db`, `uploads/`, `extraction_cache/`, and `course_brain_db/`. Run the following block as one command. It resolves the destinations from the same Compose bind mounts used in section 6b, validates the archived database before replacing anything, stops whichever runtime is serving, preserves the displaced state in a timestamped quarantine, verifies the installed database, and restarts the same runtime:
+
+```bash
+(
+    set -Eeuo pipefail
+
+    [[ -f "${RESTORE_ARCHIVE}" ]]
+    command -v sqlite3 >/dev/null 2>&1 || {
+        echo "ERROR: sqlite3 is required; install it as shown in section 6b" >&2
+        exit 1
+    }
+
+    COMPOSE_BIND_SOURCES="$(
+        sudo env -u ANDYHUB_APP_ROOT docker compose \
+            --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
+            config --format json |
+        python3 -c '
+import json
+import sys
+
+config = json.load(sys.stdin)
+binds = {
+    volume["target"]: volume["source"]
+    for volume in config["services"]["api"]["volumes"]
+    if volume.get("type") == "bind"
+}
+for target in (
+    "/data/Database",
+    "/data/uploads",
+    "/data/extraction_cache",
+    "/data/course_brain_db",
+):
+    print(binds[target])
+'
+    )"
+
+    mapfile -t LIVE_PATHS <<<"${COMPOSE_BIND_SOURCES}"
+    [[ ${#LIVE_PATHS[@]} -eq 4 ]]
+
+    DATABASE_PATH="$(realpath -e "${LIVE_PATHS[0]}/reviewer.db")"
+    UPLOADS_PATH="$(realpath -e "${LIVE_PATHS[1]}")"
+    EXTRACTION_CACHE_PATH="$(realpath -e "${LIVE_PATHS[2]}")"
+    COURSE_BRAIN_PATH="$(realpath -e "${LIVE_PATHS[3]}")"
+
+    RESTORE_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    RESTORE_STAGING="$(
+        sudo mktemp --directory \
+            --tmpdir="${BACKUP_ROOT}" \
+            ".andyhub-restore-${RESTORE_TIMESTAMP}.XXXXXX"
+    )"
+    [[ "${RESTORE_STAGING}" == "${BACKUP_ROOT}/.andyhub-restore-${RESTORE_TIMESTAMP}."* ]]
+    sudo chmod 0700 "${RESTORE_STAGING}"
+    sudo tar --extract --gzip --file "${RESTORE_ARCHIVE}" \
+        --directory "${RESTORE_STAGING}"
+
+    [[ -f "${RESTORE_STAGING}/Database/reviewer.db" ]]
+    [[ -d "${RESTORE_STAGING}/uploads" ]]
+    [[ -d "${RESTORE_STAGING}/extraction_cache" ]]
+    [[ -d "${RESTORE_STAGING}/course_brain_db" ]]
+
+    STAGED_INTEGRITY="$(
+        sudo sqlite3 -batch -noheader \
+            "${RESTORE_STAGING}/Database/reviewer.db" \
+            "PRAGMA integrity_check;"
+    )"
+    if [[ "${STAGED_INTEGRITY}" != "ok" ]]; then
+        printf 'ERROR: archived database integrity_check returned: %s\n' \
+            "${STAGED_INTEGRITY}" >&2
+        exit 1
+    fi
+
+    STREAMLIT_WAS_ACTIVE=0
+    STACK_WAS_ACTIVE=0
+    if sudo systemctl is-active --quiet streamlit.service; then
+        STREAMLIT_WAS_ACTIVE=1
+    fi
+    if sudo docker ps --quiet \
+        --filter 'label=com.docker.compose.project=andyhub-production' |
+        grep -q .; then
+        STACK_WAS_ACTIVE=1
+    fi
+    if [[ $((STREAMLIT_WAS_ACTIVE + STACK_WAS_ACTIVE)) -ne 1 ]]; then
+        echo "ERROR: expected exactly one serving runtime; nothing was changed" >&2
+        exit 1
+    fi
+
+    if [[ ${STACK_WAS_ACTIVE} -eq 1 ]]; then
+        sudo docker compose --project-name andyhub-production \
+            --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
+            down --remove-orphans
+    else
+        sudo systemctl stop streamlit.service
+    fi
+
+    PRE_RESTORE_ROOT="${BACKUP_ROOT}/pre-restore-${RESTORE_TIMESTAMP}"
+    sudo install -d -m 0700 "${PRE_RESTORE_ROOT}"
+    DATABASE_UID="$(sudo stat --format '%u' "${DATABASE_PATH}")"
+    DATABASE_GID="$(sudo stat --format '%g' "${DATABASE_PATH}")"
+    DATABASE_MODE="$(sudo stat --format '%a' "${DATABASE_PATH}")"
+
+    sudo mv -- "${DATABASE_PATH}" "${PRE_RESTORE_ROOT}/reviewer.db"
+    for suffix in -wal -shm -journal; do
+        if [[ -e "${DATABASE_PATH}${suffix}" ]]; then
+            sudo mv -- "${DATABASE_PATH}${suffix}" \
+                "${PRE_RESTORE_ROOT}/reviewer.db${suffix}"
+        fi
+    done
+    sudo mv -- "${UPLOADS_PATH}" "${PRE_RESTORE_ROOT}/uploads"
+    sudo mv -- "${EXTRACTION_CACHE_PATH}" \
+        "${PRE_RESTORE_ROOT}/extraction_cache"
+    sudo mv -- "${COURSE_BRAIN_PATH}" \
+        "${PRE_RESTORE_ROOT}/course_brain_db"
+
+    sudo install -m "${DATABASE_MODE}" \
+        -o "${DATABASE_UID}" -g "${DATABASE_GID}" \
+        "${RESTORE_STAGING}/Database/reviewer.db" "${DATABASE_PATH}"
+    sudo mv -- "${RESTORE_STAGING}/uploads" "${UPLOADS_PATH}"
+    sudo mv -- "${RESTORE_STAGING}/extraction_cache" \
+        "${EXTRACTION_CACHE_PATH}"
+    sudo mv -- "${RESTORE_STAGING}/course_brain_db" \
+        "${COURSE_BRAIN_PATH}"
+
+    RESTORED_INTEGRITY="$(
+        sudo sqlite3 -batch -noheader "${DATABASE_PATH}" \
+            "PRAGMA integrity_check;"
+    )"
+    if [[ "${RESTORED_INTEGRITY}" != "ok" ]]; then
+        printf 'ERROR: restored database integrity_check returned: %s\n' \
+            "${RESTORED_INTEGRITY}" >&2
+        exit 1
+    fi
+
+    if [[ ${STREAMLIT_WAS_ACTIVE} -eq 1 ]]; then
+        sudo systemctl enable --now streamlit.service
+        curl --fail --silent --show-error \
+            http://127.0.0.1:8501/_stcore/health
+    else
+        APP_UID="$(id -u andreipamesa20)"
+        APP_GID="$(id -g andreipamesa20)"
+        sudo env -u ANDYHUB_APP_ROOT \
+            ANDYHUB_UID="${APP_UID}" ANDYHUB_GID="${APP_GID}" \
+            docker compose --project-name andyhub-production \
+            --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
+            up --detach --remove-orphans
+
+        RESTORE_HEALTHY=0
+        for _ in {1..84}; do
+            if curl --fail --silent --show-error --max-time 5 \
+                http://127.0.0.1:8501/api/v1/health >/dev/null 2>&1; then
+                RESTORE_HEALTHY=1
+                break
+            fi
+            sleep 5
+        done
+        [[ ${RESTORE_HEALTHY} -eq 1 ]]
+        curl --fail --silent --show-error \
+            http://127.0.0.1:8501/proxy-health
+        curl --fail --silent --show-error \
+            http://127.0.0.1:8501/api/v1/health
+    fi
+
+    printf 'Restore completed. Pre-restore state retained at: %s\n' \
+        "${PRE_RESTORE_ROOT}"
+)
+```
+
+If the block fails after stopping the runtime, leave the runtime stopped and inspect the printed error. Do not delete the `pre-restore-*` quarantine. It is the recoverable copy of the state that was displaced during the restore.
