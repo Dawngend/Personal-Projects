@@ -116,11 +116,32 @@ if [[ ${EUID} -ne 0 ]]; then
     exit 1
 fi
 
-exec 9>/run/lock/andyhub-cutover.lock
+readonly LOCK_FILE=/run/lock/andyhub-cutover.lock
+exec 9>"${LOCK_FILE}"
 if ! flock --nonblock 9; then
-    log "ERROR: another AndyHub cutover or rollback is already running" >&2
+    # fd 9 is inherited by every child, so a killed cutover whose `docker
+    # compose` child survived still holds this lock with nothing meaningfully
+    # running. That happened on 2026-09-01 and presented as a flat refusal
+    # with no way to tell a real concurrent run from a leftover, so name the
+    # holder instead of guessing.
+    log "ERROR: another AndyHub cutover or rollback holds ${LOCK_FILE}" >&2
+    holder="$(cat "${LOCK_FILE}" 2>/dev/null || true)"
+    if [[ -n ${holder} ]]; then
+        log "       lock record: ${holder}" >&2
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+        log "       processes holding it:" >&2
+        lsof -t "${LOCK_FILE}" 2>/dev/null | while read -r holder_pid; do
+            log "         PID ${holder_pid}: $(tr '\0' ' ' < "/proc/${holder_pid}/cmdline" 2>/dev/null | cut -c1-120)" >&2
+        done
+    else
+        log "       inspect with: sudo lsof ${LOCK_FILE}" >&2
+    fi
+    log "       If this is a leftover from an interrupted run, kill those PIDs" >&2
+    log "       explicitly (not with pkill -f, which matches your own shell)." >&2
     exit 1
 fi
+printf 'pid=%s started=%s cmd=%s\n' "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$0" >&9 || true
 
 command -v docker >/dev/null 2>&1 || { log "ERROR: Docker is not installed" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { log "ERROR: curl is not installed" >&2; exit 1; }
