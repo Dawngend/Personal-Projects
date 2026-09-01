@@ -4,6 +4,30 @@ This runbook is for a human operator. None of these commands should be run by an
 
 The runtime has four containers with hard limits totaling 704 MB: worker 480 MB, API 128 MB, web 64 MB, and proxy 32 MB. A realistic 20-question generation measured peaks of 347.3 MiB for the worker, 81.9 MiB for the API, 40.1 MiB for the web service, and 10.4 MiB for the proxy (479.6 MiB total). Docker adds about 80 MB. The installer adds a persistent 2 GB swapfile, but swap is only a pressure valve. It is not permission to run Streamlit and the new stack together.
 
+## 0. Verify the commit is on origin
+
+From the workstation, compare local `HEAD` with `origin/main`:
+
+```powershell
+git -C "D:/Personal Projects" rev-parse HEAD
+```
+
+```powershell
+git -C "D:/Personal Projects" ls-remote origin main
+```
+
+Fetch the remote commit without changing the workstation branch, then prove that the deploy directory exists in that exact remote tree:
+
+```powershell
+git -C "D:/Personal Projects" fetch origin main
+```
+
+```powershell
+git -C "D:/Personal Projects" ls-tree -d --name-only FETCH_HEAD -- "All In One Reviewer/deploy/production"
+```
+
+The last command must print `All In One Reviewer/deploy/production`. Stop if it prints nothing, or if the commit containing the intended production changes is only in local `HEAD`. The VM can receive only commits that are on `origin`; a local-only commit cannot be pulled or cloned there.
+
 ## 1. Connect to the VM
 
 The gcloud syntax must be checked locally before the connection command is used.
@@ -33,24 +57,37 @@ gcloud compute ssh andreipamesa20@andy-reviewer-server --quiet --project=project
 
 ## 2. Stage the files without touching the running process
 
-Get the commit containing this directory onto the VM using the repository's normal fast-forward-only update. Do not copy `.env` files, Cloudflare credentials, or tokens. Resolve the checkout root rather than assuming that the VM has the same monorepo layout as the desktop:
+Get the commit containing this directory from `Dawngend/Personal-Projects`, not `Dawngend/School-Works`. The School-Works checkout contains the legacy Streamlit app and does not contain this deployment stack. Do not copy `.env` files, Cloudflare credentials, or tokens.
 
 ```bash
-APP_ROOT="/home/andreipamesa20/School-Works/All In One Reviewer"
+LEGACY_ROOT="/home/andreipamesa20/School-Works/All In One Reviewer"   # legacy Streamlit, rollback target, DO NOT DELETE
+APP_ROOT="/home/andreipamesa20/Personal-Projects/All In One Reviewer" # new stack
+PERSONAL_PROJECTS_ROOT="/home/andreipamesa20/Personal-Projects"
 ```
 
-```bash
-GIT_ROOT="$(git -C "${APP_ROOT}" rev-parse --show-toplevel)"
-```
+For a first-time checkout, clone `Personal-Projects` into the path above:
 
 ```bash
-git -C "${GIT_ROOT}" status --short
+if [[ ! -e "${PERSONAL_PROJECTS_ROOT}" ]]; then
+    git clone --branch main --single-branch https://github.com/Dawngend/Personal-Projects.git "${PERSONAL_PROJECTS_ROOT}"
+fi
+```
+
+If the checkout already exists, inspect it first:
+
+```bash
+if [[ -d "${PERSONAL_PROJECTS_ROOT}/.git" ]]; then
+    git -C "${PERSONAL_PROJECTS_ROOT}" status --short
+else
+    echo "ERROR: ${PERSONAL_PROJECTS_ROOT} exists but is not a Git checkout" >&2
+    false
+fi
 ```
 
 Stop if the checkout has local edits that overlap the incoming commit. Update only with a fast-forward:
 
 ```bash
-git -C "${GIT_ROOT}" pull --ff-only
+git -C "${PERSONAL_PROJECTS_ROOT}" pull --ff-only
 ```
 
 Confirm that these files exist:
@@ -207,12 +244,73 @@ sudo ss --tcp --listening --processes 'sport = :8501'
 
 Stop if this shows any listener other than the expected Streamlit process. `cutover.sh` performs the same preflight and aborts before stopping Streamlit if port 8501 has an unmanaged listener.
 
+## 6b. Back up production state before cutover
+
+Make sure nobody is generating a deck or using the study session. Resolve the live source paths from the API bind mounts in `compose.production.yaml`; do not assume that they live under the new checkout. The Compose defaults intentionally point at `LEGACY_ROOT`, which is the live Streamlit state and rollback target.
+
+Run this block as one command. It fails if any required mount or source is missing, writes the timestamped archive outside every Git checkout, and prints its path and byte size:
+
+```bash
+(
+    set -Eeuo pipefail
+
+    COMPOSE_BIND_SOURCES="$(
+        sudo env -u ANDYHUB_APP_ROOT docker compose \
+            --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
+            config --format json |
+        python3 -c '
+import json
+import sys
+
+config = json.load(sys.stdin)
+binds = {
+    volume["target"]: volume["source"]
+    for volume in config["services"]["api"]["volumes"]
+    if volume.get("type") == "bind"
+}
+for target in (
+    "/data/Database",
+    "/data/uploads",
+    "/data/extraction_cache",
+    "/data/course_brain_db",
+):
+    print(binds[target])
+'
+    )"
+
+    mapfile -t LIVE_PATHS <<<"${COMPOSE_BIND_SOURCES}"
+    [[ ${#LIVE_PATHS[@]} -eq 4 ]]
+
+    DATABASE_PATH="$(realpath -e "${LIVE_PATHS[0]}")"
+    UPLOADS_PATH="$(realpath -e "${LIVE_PATHS[1]}")"
+    EXTRACTION_CACHE_PATH="$(realpath -e "${LIVE_PATHS[2]}")"
+    COURSE_BRAIN_PATH="$(realpath -e "${LIVE_PATHS[3]}")"
+    [[ -f "${DATABASE_PATH}/reviewer.db" ]]
+
+    BACKUP_ROOT="/home/andreipamesa20/andyhub-backups"
+    BACKUP_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+    BACKUP_ARCHIVE="${BACKUP_ROOT}/andyhub-production-${BACKUP_TIMESTAMP}.tar.gz"
+    sudo install -d -m 0700 "${BACKUP_ROOT}"
+
+    sudo tar --create --gzip --file "${BACKUP_ARCHIVE}" --directory / -- \
+        "${DATABASE_PATH#/}" \
+        "${UPLOADS_PATH#/}" \
+        "${EXTRACTION_CACHE_PATH#/}" \
+        "${COURSE_BRAIN_PATH#/}"
+
+    printf 'Backup archive: %s\n' "${BACKUP_ARCHIVE}"
+    sudo stat --format 'Archive size: %s bytes' "${BACKUP_ARCHIVE}"
+)
+```
+
+The subshell must exit successfully and print a nonzero archive size. Do not proceed with cutover if this step fails.
+
 ## 7. Run the local cutover
 
 Make sure nobody is generating a deck. The command disables and stops supervised Streamlit first because both runtimes cannot fit in 954 MB, waits for port 8501 to become free, then builds and starts the constrained stack on that same port. It checks proxy, web, API, and container health. Disabling Streamlit prevents both runtimes from starting after a VM reboot. Any error, timeout, Ctrl+C, or termination signal after Streamlit stop triggers an automatic rollback attempt that frees port 8501 and re-enables Streamlit.
 
 ```bash
-cd "/home/andreipamesa20/School-Works/All In One Reviewer"
+cd "${APP_ROOT}" # new Personal-Projects stack; the legacy service remains at LEGACY_ROOT for rollback
 sudo ./deploy/production/cutover.sh
 ```
 
