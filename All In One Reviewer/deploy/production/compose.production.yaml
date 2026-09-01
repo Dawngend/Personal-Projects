@@ -22,7 +22,7 @@ services:
   # api 128, web 64, proxy 32; limit total 704. The host has 954 MB RAM and
   # the installer provides a 2 GB swapfile as the pressure buffer.
   api:
-    image: andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}
+    image: ${ANDYHUB_API_IMAGE:-andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}}
     build:
       context: ../..
       dockerfile: deploy/api.Dockerfile
@@ -45,7 +45,7 @@ services:
       start_period: 180s
 
   worker:
-    image: andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}
+    image: ${ANDYHUB_API_IMAGE:-andyhub-api:${ANDYHUB_IMAGE_TAG:-phase6-production}}
     build:
       context: ../..
       dockerfile: deploy/api.Dockerfile
@@ -69,7 +69,7 @@ services:
       start_period: 20s
 
   web:
-    image: andyhub-web:${ANDYHUB_IMAGE_TAG:-phase6-production}
+    image: ${ANDYHUB_WEB_IMAGE:-andyhub-web:${ANDYHUB_IMAGE_TAG:-phase6-production}}
     build:
       context: ../../apps/web
       dockerfile: Dockerfile

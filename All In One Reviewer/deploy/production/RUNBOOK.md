@@ -400,8 +400,55 @@ The subshell must exit successfully and print a nonzero archive size. Do not pro
 
 Make sure nobody is generating a deck. The command disables and stops supervised Streamlit first because both runtimes cannot fit in 954 MB, waits for port 8501 to become free, then builds and starts the constrained stack on that same port. It checks proxy, web, API, and container health. Disabling Streamlit prevents both runtimes from starting after a VM reboot. Any error, timeout, Ctrl+C, or termination signal after Streamlit stop triggers an automatic rollback attempt that frees port 8501 and re-enables Streamlit.
 
+**Do not build on this VM.** A cutover attempt on 2026-09-01 was abandoned after 20 minutes: the box sat at 77% iowait, buildkit was growing at roughly 285 KB/s, and neither application image had been produced, all with Streamlit already stopped. The disk is an IOPS-throttled standard persistent disk, and `npm install` plus `next build` is the worst possible workload for it. Production was down 24 minutes for a build that was never going to finish in a cutover window. Build somewhere else and bring finished images here.
+
+### Preferred: load pre-built images, then start
+
+On a machine with a fast disk (the WSL2 Ubuntu box), build from a clean clone of `origin/main` and export:
+
+```bash
+docker build --file deploy/api.Dockerfile --tag andyhub-api:phase6-production .
+docker build --file apps/web/Dockerfile --tag andyhub-web:phase6-production apps/web
+docker save andyhub-api:phase6-production andyhub-web:phase6-production --output andyhub-images.tar
+```
+
+Copy the tarball to the VM, load it, and confirm both images are present:
+
+```bash
+sudo docker load --input andyhub-images.tar
+```
+
+```bash
+sudo docker images --filter "reference=andyhub-*" --format "{{.Repository}}:{{.Tag}} {{.Size}}"
+```
+
+Then run the cutover with the build skipped. `cutover.sh` verifies both images exist **before** it stops Streamlit, so a missing image costs nothing:
+
 ```bash
 cd "${APP_ROOT}" # new Personal-Projects stack; the legacy service remains at LEGACY_ROOT for rollback
+sudo ANDYHUB_SKIP_BUILD=1 ./deploy/production/cutover.sh
+```
+
+### Alternative: pull from a registry
+
+Once the images are published to GHCR, the tarball step disappears. Point the stack at the registry and let the cutover pull:
+
+```bash
+cd "${APP_ROOT}"
+sudo ANDYHUB_SKIP_BUILD=1 ANDYHUB_PULL=1 \
+    ANDYHUB_API_IMAGE=ghcr.io/dawngend/andyhub-api:phase6-production \
+    ANDYHUB_WEB_IMAGE=ghcr.io/dawngend/andyhub-web:phase6-production \
+    ./deploy/production/cutover.sh
+```
+
+If the packages are private, run `docker login ghcr.io` on the VM first. Publishing them as public packages avoids storing a token on the VM.
+
+### Last resort: build here
+
+Only if no other machine is available, and expect a long outage or a failure:
+
+```bash
+cd "${APP_ROOT}"
 sudo ./deploy/production/cutover.sh
 ```
 

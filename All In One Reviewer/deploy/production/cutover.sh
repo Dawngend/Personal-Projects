@@ -155,6 +155,43 @@ export ANDYHUB_DATA_HOST_ROOT="${DATA_HOST_ROOT}"
 export ANDYHUB_UID="$(id -u "${APP_USER}")"
 export ANDYHUB_GID="$(id -g "${APP_USER}")"
 
+# This VM's disk is IOPS-throttled hard enough that building here is not
+# viable: a 2026-09-01 attempt sat at 77% iowait and had not finished the
+# first application image after 20 minutes, with Streamlit already stopped.
+# Build elsewhere, load the images, and set ANDYHUB_SKIP_BUILD=1 so the
+# cutover only starts containers. Verify the images BEFORE stopping
+# Streamlit, so a missing image costs nothing instead of an outage.
+readonly SKIP_BUILD="${ANDYHUB_SKIP_BUILD:-0}"
+readonly PULL_IMAGES="${ANDYHUB_PULL:-0}"
+readonly IMAGE_TAG="${ANDYHUB_IMAGE_TAG:-phase6-production}"
+readonly API_IMAGE="${ANDYHUB_API_IMAGE:-andyhub-api:${IMAGE_TAG}}"
+readonly WEB_IMAGE="${ANDYHUB_WEB_IMAGE:-andyhub-web:${IMAGE_TAG}}"
+export ANDYHUB_API_IMAGE="${API_IMAGE}"
+export ANDYHUB_WEB_IMAGE="${WEB_IMAGE}"
+
+if [[ ${SKIP_BUILD} == "1" ]]; then
+    if [[ ${PULL_IMAGES} == "1" ]]; then
+        log "pulling ${API_IMAGE} and ${WEB_IMAGE} from their registry"
+        compose pull --quiet api web || {
+            log "ERROR: could not pull the application images." >&2
+            log "       If they are private, authenticate first: docker login ghcr.io" >&2
+            exit 1
+        }
+    fi
+    for image in "${API_IMAGE}" "${WEB_IMAGE}"; do
+        docker image inspect "${image}" >/dev/null 2>&1 || {
+            log "ERROR: ANDYHUB_SKIP_BUILD=1 but ${image} is not present locally." >&2
+            log "       Either set ANDYHUB_PULL=1 to fetch it, or load it from a tarball:" >&2
+            log "         # on a machine with a fast disk:" >&2
+            log "         docker save ${API_IMAGE} ${WEB_IMAGE} -o images.tar" >&2
+            log "         # copy images.tar to this VM, then:" >&2
+            log "         sudo docker load --input images.tar" >&2
+            exit 1
+        }
+    done
+    log "using pre-built images (ANDYHUB_SKIP_BUILD=1); no build will run here"
+fi
+
 compose config --quiet
 
 if production_stack_is_healthy; then
@@ -190,8 +227,13 @@ if port_8501_is_listening; then
     exit 1
 fi
 
-log "building and starting the 704 MB production stack"
-COMPOSE_PARALLEL_LIMIT=1 compose up --detach --build --remove-orphans
+if [[ ${SKIP_BUILD} == "1" ]]; then
+    log "starting the 704 MB production stack from pre-loaded images"
+    COMPOSE_PARALLEL_LIMIT=1 compose up --detach --no-build --remove-orphans
+else
+    log "building and starting the 704 MB production stack"
+    COMPOSE_PARALLEL_LIMIT=1 compose up --detach --build --remove-orphans
+fi
 
 log "waiting up to 7 minutes for the local proxy and its dependencies"
 proxy_ready=0
