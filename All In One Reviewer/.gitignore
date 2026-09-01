@@ -11,3 +11,7 @@ deploy/staging/.env.staging
 deploy/staging/cloudflared/config.yml
 deploy/staging/cloudflared/*.json
 deploy/staging/secrets/
+
+# Debug dump written when a provider response will not parse. It can contain
+# raw model output, so it must never be committed.
+groq_raw_error.txt

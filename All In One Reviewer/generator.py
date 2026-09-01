@@ -347,7 +347,12 @@ def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMP
             print(f"  [Warning] JSON parse error: {e}. Skipping this chunk.")
         try:
             debug_dir = Path(
-                os.environ.get("ANDYHUB_EXTRACTION_CACHE_DIR", tempfile.gettempdir())
+                # .get(key, default) returns "" when the variable is SET but
+                # empty, and Path("") resolves to the current directory, which
+                # dropped debug dumps into the application root. Fall back on
+                # emptiness, not just on absence.
+                os.environ.get("ANDYHUB_EXTRACTION_CACHE_DIR", "").strip()
+                or tempfile.gettempdir()
             )
             debug_dir.mkdir(parents=True, exist_ok=True)
             debug_path = debug_dir / "groq_raw_error.txt"
