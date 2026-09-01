@@ -62,11 +62,18 @@ services:
     mem_limit: 480m
     restart: unless-stopped
     healthcheck:
+      # The worker carries the largest memory limit and the heaviest startup:
+      # it initialises course memory and opens Chroma from a bind mount on an
+      # IOPS-throttled disk. A 2026-09-01 cutover failed here because it had a
+      # 110s budget (20s + 6x15s) while the lighter api service had 360s. The
+      # worker went unhealthy while api was still legitimately starting, which
+      # failed the cutover and triggered a rollback. Match the api budget; the
+      # extra grace costs nothing when startup is fast.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=5).read()"]
       interval: 15s
       timeout: 8s
-      retries: 6
-      start_period: 20s
+      retries: 12
+      start_period: 180s
 
   web:
     image: ${ANDYHUB_WEB_IMAGE:-andyhub-web:${ANDYHUB_IMAGE_TAG:-phase6-production}}
