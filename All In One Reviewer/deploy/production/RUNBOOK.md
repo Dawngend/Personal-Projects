@@ -246,6 +246,52 @@ sudo ss --tcp --listening --processes 'sport = :8501'
 
 Stop if this shows any listener other than the expected Streamlit process. `cutover.sh` performs the same preflight and aborts before stopping Streamlit if port 8501 has an unmanaged listener.
 
+## 6a. Ensure every bind-mount source exists and is owned by the application user
+
+Found by a real cutover rehearsal on 2026-09-01. `compose.production.yaml` bind-mounts four host directories under the data root, but only three of them existed on the VM. `extraction_cache` did not: it is a new-stack concept that the legacy Streamlit app never created.
+
+Two failures follow from a missing bind source, and the second is the dangerous one. Section 6b aborts, because `realpath -e` fails on a path that does not exist. Worse, if you skip straight to cutover, **Docker silently creates the missing source as `root:root`**. The containers run as the application user, so their writes into that directory fail while the proxy, the web service, and every other health check still pass. That is the same uid-mismatch class as the two incidents fixed in `a95473d` and `1bc2fcf`.
+
+Resolve the four sources the same way section 6b does, from Compose itself rather than from a hardcoded list, and report what exists:
+
+```bash
+sudo env -u ANDYHUB_DATA_HOST_ROOT docker compose \
+    --file "${APP_ROOT}/deploy/production/compose.production.yaml" \
+    config --format json |
+python3 -c '
+import json
+import sys
+
+config = json.load(sys.stdin)
+binds = {
+    volume["target"]: volume["source"]
+    for volume in config["services"]["api"]["volumes"]
+    if volume.get("type") == "bind"
+}
+for target in (
+    "/data/Database",
+    "/data/uploads",
+    "/data/extraction_cache",
+    "/data/course_brain_db",
+):
+    print(binds[target])
+' | while read -r path; do
+    if [ -e "${path}" ]; then
+        stat -c 'EXISTS  %U:%G %a  %n' "${path}"
+    else
+        echo "MISSING              ${path}"
+    fi
+done
+```
+
+Create any directory reported as `MISSING`, owned by the application user, matching the mode of the three that already exist:
+
+```bash
+sudo install -d -o andreipamesa20 -g andreipamesa20 -m 775 "<missing path>"
+```
+
+Re-run the block above and confirm that all four report `EXISTS` as `andreipamesa20:andreipamesa20`. Stop here if any of them is root-owned: the cutover will otherwise appear to succeed while the API cannot write. On 2026-09-01 the correct state was all four at `andreipamesa20:andreipamesa20` mode `775`.
+
 ## 6b. Back up production state before cutover
 
 Make sure nobody is generating a deck or using the study session. Resolve the live source paths from the API bind mounts in `compose.production.yaml`; do not assume that they live under the new checkout. The Compose defaults intentionally point at `LEGACY_ROOT`, which is the live Streamlit state and rollback target.
