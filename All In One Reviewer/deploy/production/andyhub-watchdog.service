@@ -1,0 +1,23 @@
+[Unit]
+Description=AndyHub production unhealthy-container watchdog
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Runs as root: it calls docker restart and takes /run/lock/andyhub-cutover.lock,
+# the same lock cutover.sh and rollback.sh hold.
+User=root
+# Creates and owns /var/lib/andyhub-watchdog, exported to the script as
+# STATE_DIRECTORY. This holds the consecutive-restart counters, which must
+# survive between timer firings but not across a reboot cleanly reset.
+StateDirectory=andyhub-watchdog
+# The path contains spaces, so it must be quoted: systemd splits ExecStart on
+# whitespace. Unquoted this fails with status=203/EXEC, the same way
+# streamlit.service did.
+# APP_ROOT per RUNBOOK.md: the Personal-Projects checkout holds the stack CODE.
+# School-Works is LEGACY_ROOT and holds the live DATA and the rollback target;
+# watchdog.sh does not exist there.
+ExecStart="/home/andreipamesa20/Personal-Projects/All In One Reviewer/deploy/production/watchdog.sh"
+# A single pass polls four containers and at worst issues four restarts.
+TimeoutStartSec=300

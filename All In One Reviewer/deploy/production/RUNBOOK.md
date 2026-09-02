@@ -541,6 +541,40 @@ sudo docker compose --project-name andyhub-production --file deploy/production/c
 
 Never run `docker compose down -v`. Application state is bind-mounted from the existing `Database`, `uploads`, `extraction_cache`, and `course_brain_db` directories.
 
+## 8a. Install the unhealthy-container watchdog
+
+Do this once, after the first successful cutover. It is not part of a routine redeploy.
+
+Every service in `compose.production.yaml` carries both a `healthcheck` and `restart: unless-stopped`, which reads as if the two cooperate. **They do not.** Docker's restart policy fires when a process *exits* and ignores health status entirely, so a wedged-but-alive container stays `unhealthy` indefinitely with nothing restarting it and nothing reporting it. `andyhub-watchdog.timer` closes that gap.
+
+Install the unit and timer, which live in this directory:
+
+```bash
+sudo cp "${APP_ROOT}/deploy/production/andyhub-watchdog.service" /etc/systemd/system/
+sudo cp "${APP_ROOT}/deploy/production/andyhub-watchdog.timer" /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now andyhub-watchdog.timer
+```
+
+Confirm it is scheduled and prove one pass runs clean:
+
+```bash
+systemctl list-timers andyhub-watchdog.timer --no-pager
+sudo systemctl start andyhub-watchdog.service
+journalctl -u andyhub-watchdog.service --no-pager -n 20
+```
+
+On a healthy stack that pass logs nothing but its own exit. Alerting is journald only, by design: it needs no credentials on the VM. Restarts log at warning and give-ups at error, so an alerting path added later only has to watch this unit's priority levels.
+
+What it will and will not do:
+
+- Restarts a container Docker has marked `unhealthy`, up to **3 consecutive times** per service. After that it stops restarting and logs an error rather than restart-looping a broken image. A service that recovers has its counter cleared.
+- **Skips the entire pass while `/run/lock/andyhub-cutover.lock` is held.** It takes the same lock as `cutover.sh` and `rollback.sh`. Without this it would race a deploy and restart containers out from under a cutover, or "recover" a stack that `rollback.sh` is deliberately tearing down.
+- **Never acts on a `starting` container.** The worker's `start_period` is 180 s and legitimately uses it; restarting there would create the boot loop the watchdog exists to prevent.
+- **Never runs `compose up`.** If a container is absent it logs an error and stops. Bringing production up is a deploy decision and `cutover.sh` owns it.
+
+If the watchdog needs to be silenced during a long manual intervention, `sudo systemctl stop andyhub-watchdog.timer` and remember to start it again. Holding the cutover lock also suppresses it for the duration.
+
 ## 9. Abort or roll back
 
 If `cutover.sh` fails, it automatically attempts to stop the containers and restore Streamlit on port 8501. The unchanged tunnel follows the restored service automatically. Verify `https://andyhub.org`.

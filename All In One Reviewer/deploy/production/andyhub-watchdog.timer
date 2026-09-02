@@ -1,0 +1,16 @@
+[Unit]
+Description=Run the AndyHub unhealthy-container watchdog every 2 minutes
+
+[Timer]
+# A container needs roughly 3 minutes of consecutive check failures to be
+# marked unhealthy (interval 15s, retries 12). Polling every 2 minutes bounds
+# the time an unhealthy container sits unattended at about 5 minutes total.
+OnBootSec=5min
+OnUnitActiveSec=2min
+# Do not let a missed timer (VM suspended, clock jump) fire a burst.
+AccuracySec=30s
+Persistent=false
+Unit=andyhub-watchdog.service
+
+[Install]
+WantedBy=timers.target
