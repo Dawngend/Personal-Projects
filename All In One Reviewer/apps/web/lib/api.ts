@@ -1,4 +1,7 @@
 import {
+  type ChatAction,
+  ChatMessageSchema,
+  type ChatMessage,
   DeckDetailSchema,
   DeckSchema,
   type DeckSummary,
@@ -113,7 +116,59 @@ export const api = {
     request(`/quiz-sessions/${sessionId}/summary`, undefined, (body) =>
       SessionSummarySchema.parse(body),
     ),
+  getModuleChat: (moduleId: string) =>
+    request(`/modules/${moduleId}/chat`, undefined, (body) =>
+      (body as unknown[]).map((item) => ChatMessageSchema.parse(item)),
+    ),
 };
+
+export function moduleFileUrl(moduleId: string): string {
+  return `${API_BASE}/modules/${moduleId}/file`;
+}
+
+/**
+ * Chat replies stream over a POST'd SSE body, which EventSource cannot send —
+ * read the response stream by hand instead, splitting on the same
+ * "event: <name>\ndata: <json>\n\n" framing the backend already emits.
+ */
+export async function streamChatReply(
+  moduleId: string,
+  message: string,
+  action: ChatAction | undefined,
+  onToken: (delta: string) => void,
+  onDone: () => void,
+  onError: (error: Error) => void,
+): Promise<void> {
+  try {
+    const response = await fetch(`${API_BASE}/modules/${moduleId}/chat/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, action }),
+    });
+    if (!response.ok || !response.body) {
+      const body = await response.json().catch(() => null);
+      throw new ApiError(body?.error?.message ?? "AndyHub API is unavailable.", response.status);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split("\n\n");
+      buffer = events.pop() ?? "";
+      for (const raw of events) {
+        const eventName = raw.match(/^event: (.+)$/m)?.[1];
+        const data = raw.match(/^data: (.+)$/m)?.[1];
+        if (eventName === "token" && data) onToken((JSON.parse(data) as { delta: string }).delta);
+        if (eventName === "done") onDone();
+      }
+    }
+  } catch (error) {
+    onError(error instanceof Error ? error : new Error("Chat stream failed."));
+  }
+}
 
 export function subscribeToGeneration(
   jobId: string,
@@ -128,4 +183,13 @@ export function subscribeToGeneration(
   return () => events.close();
 }
 
-export type { DeckSummary, ModuleItem, GradeResult, QuizSession, RevealResult, SessionSummary };
+export type {
+  DeckSummary,
+  ModuleItem,
+  GradeResult,
+  QuizSession,
+  RevealResult,
+  SessionSummary,
+  ChatMessage,
+  ChatAction,
+};

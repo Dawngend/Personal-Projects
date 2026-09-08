@@ -1,0 +1,188 @@
+.page,
+.state {
+  width: min(1280px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 24px 0 48px;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.wordmark {
+  color: var(--graphite);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  text-decoration: none;
+}
+.wordmark span {
+  color: var(--orchid-ink);
+}
+.back {
+  color: var(--graphite);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.title {
+  margin: 6px 0 28px;
+  font-family: var(--font-display);
+  font-size: clamp(1.8rem, 3.4vw, 2.6rem);
+  letter-spacing: -0.05em;
+}
+.split {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 28px;
+  align-items: start;
+}
+.sourcePane {
+  border: 1px solid var(--mist-line);
+  background: rgba(246, 246, 251, 0.6);
+  min-height: 70vh;
+  display: flex;
+}
+.noPreview {
+  margin: auto;
+  max-width: 320px;
+  padding: 40px;
+  color: #635d69;
+  line-height: 1.5;
+  text-align: center;
+}
+.pdfPane {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+.pdfCanvasWrap {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+}
+.pdfCanvasWrap canvas {
+  max-width: 100%;
+  height: auto;
+  box-shadow: 0 2px 12px rgba(30, 20, 40, 0.12);
+}
+.pdfControls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  border-top: 1px solid var(--mist-line);
+  padding: 10px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+.pdfControls button {
+  border: 1px solid var(--graphite);
+  background: transparent;
+  color: var(--graphite);
+  padding: 6px 12px;
+}
+.pdfControls button:disabled {
+  opacity: 0.4;
+}
+.pdfError {
+  margin: auto;
+  color: var(--error-carmine);
+  padding: 40px;
+}
+.chatPane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--mist-line);
+  background: linear-gradient(160deg, var(--mist-paper), var(--orchid-wash));
+  padding: 20px;
+  min-height: 70vh;
+}
+.quickActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.quickActions button {
+  border: 1px solid var(--vector-teal);
+  background: var(--teal-wash);
+  color: var(--vector-teal);
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.quickActions button:disabled {
+  opacity: 0.5;
+}
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.emptyState {
+  color: #635d69;
+  line-height: 1.5;
+}
+.userMessage,
+.assistantMessage {
+  padding: 10px 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.userMessage {
+  align-self: flex-end;
+  max-width: 85%;
+  background: var(--graphite);
+  color: var(--mist-paper);
+}
+.assistantMessage {
+  align-self: flex-start;
+  max-width: 90%;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid var(--mist-line);
+  color: var(--graphite);
+}
+.chatError {
+  color: var(--error-carmine);
+}
+.composer {
+  display: flex;
+  gap: 8px;
+}
+.composer input {
+  flex: 1;
+  border: 1px solid var(--mist-line);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px 12px;
+}
+.composer button {
+  border: 1px solid var(--graphite);
+  background: var(--graphite);
+  color: var(--mist-paper);
+  padding: 10px 16px;
+  font-weight: 700;
+}
+.composer button:disabled {
+  opacity: 0.5;
+}
+@media (max-width: 900px) {
+  .split {
+    grid-template-columns: 1fr;
+  }
+  .sourcePane,
+  .chatPane {
+    min-height: 50vh;
+  }
+}

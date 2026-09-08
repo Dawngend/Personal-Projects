@@ -211,6 +211,18 @@ button {
   font-family: var(--font-mono);
   font-size: 0.65rem;
 }
+.module-reviewer-link {
+  display: block;
+  border-top: 1px solid var(--mist-line);
+  padding: 8px 12px;
+  color: var(--vector-teal);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+}
 .brief-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 130px;

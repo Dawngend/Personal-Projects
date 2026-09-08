@@ -13,13 +13,15 @@ from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from generator import GenerationDependencies, default_generation_dependencies
 from rag_engine import initialize_course_memory
 
 from .persistence import ApiRepository
 from .schemas import (
+    ChatMessage,
+    ChatRequest,
     DeckDetail,
     DeckSummary,
     GenerationJob,
@@ -33,7 +35,7 @@ from .schemas import (
     SessionSummary,
     SubmitAnswer,
 )
-from .services import ALLOWED_UPLOADS, DeckService, GenerationService, ModuleService, QuizService
+from .services import ALLOWED_UPLOADS, ChatService, DeckService, GenerationService, ModuleService, QuizService
 from .settings import Settings
 from .structured_logging import configure_logging, log_event
 
@@ -53,6 +55,7 @@ def create_app(
     deck_service = DeckService(settings.database_path)
     generation_service = GenerationService(settings, repository, dependencies_factory)
     quiz_service = QuizService(repository, settings.database_path)
+    chat_service = ChatService(settings, repository, module_service)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -150,6 +153,26 @@ def create_app(
         if not files:
             raise HTTPException(status_code=422, detail={"code": "no_files", "message": "At least one file is required"})
         return ModuleList(items=[await module_service.store(upload) for upload in files])
+
+    @app.get("/api/v1/modules/{module_id}/file")
+    def get_module_file(module_id: str) -> FileResponse:
+        module, path = module_service.resolve_file(module_id)
+        return FileResponse(path, media_type=module.media_type, filename=module.filename)
+
+    @app.get("/api/v1/modules/{module_id}/chat", response_model=list[ChatMessage])
+    def get_module_chat(module_id: str) -> list[ChatMessage]:
+        return chat_service.history(module_id)
+
+    @app.post("/api/v1/modules/{module_id}/chat/events")
+    async def post_module_chat(module_id: str, request: ChatRequest) -> StreamingResponse:
+        module_service.resolve_file(module_id)
+
+        def stream():
+            for delta in chat_service.stream_reply(module_id, request.message, request.action):
+                yield f"event: token\ndata: {json.dumps({'delta': delta})}\n\n"
+            yield "event: done\ndata: {}\n\n"
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
     @app.get("/api/v1/decks", response_model=list[DeckSummary])
     def list_decks(subject: str | None = None, search: str | None = None, limit: int = Query(default=50, ge=1, le=100)) -> list[DeckSummary]:

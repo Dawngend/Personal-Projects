@@ -158,6 +158,21 @@ class RevealResult(ApiModel):
     solution_steps: list[str]
 
 
+ChatAction = Literal["explain", "summarize", "fill_gaps"]
+
+
+class ChatMessage(ApiModel):
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    created_at: str
+
+
+class ChatRequest(ApiModel):
+    message: str = Field(min_length=1, max_length=4000)
+    action: ChatAction | None = None
+
+
 class SessionSummary(ApiModel):
     total_questions: int
     attempted: int

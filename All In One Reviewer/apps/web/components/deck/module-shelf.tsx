@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ModuleItem } from "@/lib/api";
 
 type Props = { modules: ModuleItem[]; selected: string[]; onChange: (ids: string[]) => void };
@@ -42,6 +43,9 @@ export function ModuleShelf({ modules, selected, onChange }: Props) {
               </span>
               <code>{Math.ceil(module.sizeBytes / 1024)} KB</code>
             </label>
+            <Link href={`/modules/${module.id}/reviewer`} className="module-reviewer-link">
+              Open reviewer →
+            </Link>
           </li>
         );
       })}

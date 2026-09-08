@@ -15,9 +15,12 @@ from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
 
+from extractor import process_module_file_v2
 from generator import (
+    MODEL_NAME,
     GenerationDependencies,
     _chunk_text,
+    _get_client,
     get_andy_prompt,
     persist_valid_cards,
     prepare_custom_deck,
@@ -26,8 +29,10 @@ from generator import (
 from grading import decode_card_options, grade_enumeration, grade_problem_answer, problem_payload
 from repositories import Card, CardRepository, Deck, DeckRepository
 
-from .persistence import ApiRepository, StoredModule
+from .persistence import ApiRepository, ChatMessageRow, StoredModule
 from .schemas import (
+    ChatAction,
+    ChatMessage,
     DeckDetail,
     DeckReference,
     DeckSummary,
@@ -114,6 +119,15 @@ class ModuleService:
             await upload.close()
             staging.unlink(missing_ok=True)
 
+    def resolve_file(self, module_id: str) -> tuple[StoredModule, Path]:
+        module = self.repository.get_module(module_id)
+        if not module:
+            raise _not_found("Module")
+        path = self.settings.uploads_directory / module.stored_filename
+        if not path.exists():
+            raise _not_found("Module file")
+        return module, path
+
     @staticmethod
     def _to_item(module: StoredModule, duplicate: bool = False) -> ModuleItem:
         return ModuleItem(
@@ -121,6 +135,71 @@ class ModuleService:
             size_bytes=module.size_bytes, content_hash=module.content_hash,
             extraction_status=module.extraction_status, duplicate=duplicate,
         )
+
+
+TUTOR_SYSTEM_PROMPT = (
+    "You are Andy, a patient study tutor embedded in AndyHub's Reviewer view. "
+    "Answer strictly using the module content provided below; if something is "
+    "not covered by it, say so instead of guessing. Keep answers focused and "
+    "written for a student reviewing this exact material."
+)
+
+CHAT_ACTION_PROMPTS: dict[str, str] = {
+    "explain": "Explain the most difficult or easy-to-misunderstand parts of this module in simple terms.",
+    "summarize": "Write a concise summary of this module's key points, organized with short headings.",
+    "fill_gaps": "Identify concepts this module mentions but under-explains, and fill in the missing context a student would need.",
+}
+
+#: Characters of extracted module text sent as context per chat turn. Generous
+#: enough for a full module chapter while leaving headroom in the model's
+#: context window for chat history and the reply itself.
+CHAT_CONTEXT_CHARS = 24000
+
+
+class ChatService:
+    def __init__(self, settings: Settings, repository: ApiRepository, module_service: ModuleService) -> None:
+        self.settings = settings
+        self.repository = repository
+        self.module_service = module_service
+
+    def history(self, module_id: str) -> list[ChatMessage]:
+        if not self.repository.get_module(module_id):
+            raise _not_found("Module")
+        return [self._to_message(row) for row in self.repository.list_chat_messages(module_id)]
+
+    def stream_reply(self, module_id: str, message: str, action: ChatAction | None):
+        """Yield assistant reply chunks as they arrive, then persist the full turn."""
+        _, file_path = self.module_service.resolve_file(module_id)
+        module_text = process_module_file_v2(str(file_path))[:CHAT_CONTEXT_CHARS]
+        history = self.repository.list_chat_messages(module_id)
+
+        self.repository.append_chat_message(module_id, "user", message)
+
+        user_turn = message if action is None else f"{CHAT_ACTION_PROMPTS[action]}\n\n{message}".strip()
+        system_prompt = f"{TUTOR_SYSTEM_PROMPT}\n\n--- MODULE CONTENT ---\n{module_text}"
+        messages = [{"role": "system", "content": system_prompt}]
+        for row in history[-10:]:
+            messages.append({"role": row.role, "content": row.content})
+        messages.append({"role": "user", "content": user_turn})
+
+        client = _get_client()
+        stream = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages,
+            temperature=0.4,
+            stream=True,
+        )
+        collected: list[str] = []
+        for chunk in stream:
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                collected.append(delta)
+                yield delta
+        self.repository.append_chat_message(module_id, "assistant", "".join(collected))
+
+    @staticmethod
+    def _to_message(row: ChatMessageRow) -> ChatMessage:
+        return ChatMessage(id=row.id, role=row.role, content=row.content, created_at=row.created_at)
 
 
 class DeckService:

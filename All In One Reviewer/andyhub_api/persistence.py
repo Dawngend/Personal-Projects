@@ -13,6 +13,15 @@ from repositories import open_connection
 
 
 @dataclass(frozen=True)
+class ChatMessageRow:
+    id: str
+    module_id: str
+    role: str
+    content: str
+    created_at: str
+
+
+@dataclass(frozen=True)
 class StoredModule:
     id: str
     filename: str
@@ -66,6 +75,11 @@ class ApiRepository:
                     session_id TEXT NOT NULL, card_id INTEGER NOT NULL, status TEXT NOT NULL,
                     wrong_count INTEGER NOT NULL DEFAULT 0, revealed INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY (session_id, card_id)
+                );
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id TEXT PRIMARY KEY, module_id TEXT NOT NULL, role TEXT NOT NULL,
+                    content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (module_id) REFERENCES modules (id)
                 );
                 """
             )
@@ -263,6 +277,28 @@ class ApiRepository:
                 "SELECT * FROM quiz_attempts WHERE session_id = ? AND card_id = ?", (session_id, card_id)
             ).fetchone()
         return dict(row) if row else None
+
+    def list_chat_messages(self, module_id: str) -> list[ChatMessageRow]:
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT id, module_id, role, content, created_at FROM chat_messages"
+                " WHERE module_id = ? ORDER BY created_at ASC, rowid ASC",
+                (module_id,),
+            ).fetchall()
+        return [ChatMessageRow(*row) for row in rows]
+
+    def append_chat_message(self, module_id: str, role: str, content: str) -> ChatMessageRow:
+        message = ChatMessageRow(f"msg_{uuid4().hex}", module_id, role, content, "")
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO chat_messages (id, module_id, role, content) VALUES (?, ?, ?, ?)",
+                (message.id, module_id, role, content),
+            )
+            row = connection.execute(
+                "SELECT id, module_id, role, content, created_at FROM chat_messages WHERE id = ?",
+                (message.id,),
+            ).fetchone()
+        return ChatMessageRow(*row)
 
     def summary(self, session_id: str) -> dict[str, Any]:
         with self._connection() as connection:

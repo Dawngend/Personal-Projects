@@ -135,6 +135,19 @@ export const SessionSummarySchema = z
   .strict();
 export type SessionSummary = z.infer<typeof SessionSummarySchema>;
 
+export const ChatActionSchema = z.enum(["explain", "summarize", "fill_gaps"]);
+export type ChatAction = z.infer<typeof ChatActionSchema>;
+
+export const ChatMessageSchema = z
+  .object({
+    id: z.string().startsWith("msg_"),
+    role: z.enum(["user", "assistant"]),
+    content: z.string(),
+    createdAt: z.string(),
+  })
+  .strict();
+export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+
 export const GenerationRequestSchema = z.object({
   deckName: z.string().trim().min(2, "Name the deck."),
   subject: z.string().trim().min(2, "Add a subject."),
