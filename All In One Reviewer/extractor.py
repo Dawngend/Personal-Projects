@@ -8,8 +8,14 @@ from PIL import Image
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
-# Tesseract executable path for Windows
-#pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Tesseract ships outside PATH on Windows, so pytesseract can't find it by
+# default; OCR then fails silently and process_module_file_v2 returns empty
+# text for any scanned/image-only PDF. ANDYHUB_TESSERACT_CMD overrides the
+# path for machines where it's installed elsewhere (or already on PATH).
+_default_tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+_tesseract_cmd = os.environ.get("ANDYHUB_TESSERACT_CMD", _default_tesseract_cmd)
+if os.path.exists(_tesseract_cmd):
+    pytesseract.pytesseract.tesseract_cmd = _tesseract_cmd
 
 EXTRACTION_CACHE_DIR = Path(
     os.environ.get(
