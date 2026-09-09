@@ -52,7 +52,7 @@ def create_app(
     settings = settings or Settings.defaults()
     repository = ApiRepository(settings.database_path)
     module_service = ModuleService(settings, repository)
-    deck_service = DeckService(settings.database_path)
+    deck_service = DeckService(settings.database_path, module_lookup=repository.get_module)
     generation_service = GenerationService(settings, repository, dependencies_factory)
     quiz_service = QuizService(repository, settings.database_path)
     chat_service = ChatService(settings, repository, module_service)

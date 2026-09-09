@@ -125,9 +125,17 @@ export function DeckDetail({ deckId }: { deckId: number }) {
         <section>
           <p className="eyebrow">Source modules</p>
           <ul className={styles.modules}>
-            {data.modules.map((module) => (
-              <li key={module}>{module}</li>
-            ))}
+            {data.moduleRefs?.length
+              ? data.moduleRefs.map((module) => (
+                  <li key={module.id}>
+                    {module.filename}
+                    {" "}
+                    <Link href={`/modules/${module.id}/reviewer`} className="module-reviewer-link">
+                      Open reviewer →
+                    </Link>
+                  </li>
+                ))
+              : data.modules.map((module) => <li key={module}>{module}</li>)}
           </ul>
           <p className="eyebrow">Question composition</p>
           <dl className={styles.composition}>

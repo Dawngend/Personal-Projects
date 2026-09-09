@@ -15,11 +15,20 @@ export const ModuleSchema = z.object({
 });
 export type ModuleItem = z.infer<typeof ModuleSchema>;
 
+export const ModuleRefSchema = z.object({
+  id: z.string().startsWith("mod_"),
+  filename: z.string(),
+});
+export type ModuleRef = z.infer<typeof ModuleRefSchema>;
+
 export const DeckSchema = z.object({
   id: z.number().int(),
   name: z.string(),
   subject: z.string(),
   modules: z.array(z.string()),
+  // Absent for decks generated before the Reviewer view shipped, or via the
+  // legacy Streamlit path -- those fall back to the plain `modules` names.
+  moduleRefs: z.array(ModuleRefSchema).nullable().optional(),
   cardCount: z.number().int(),
   questionTypes: z.record(z.string(), z.number().int()),
   totalMisses: z.number().int(),

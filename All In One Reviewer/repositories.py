@@ -19,6 +19,7 @@ class Deck:
     name: str
     modules_included: str
     subject: str
+    module_ids: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,6 +68,16 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
         )
         """
     )
+    # Additive migration: CREATE TABLE IF NOT EXISTS never alters an existing
+    # table. Decks created before the Reviewer view shipped have no module_ids
+    # column at all, so it is added as nullable JSON (a list of module ids) --
+    # NULL for decks generated before this migration, which simply have no
+    # per-module Reviewer link. Legacy modules_included stays untouched; it is
+    # still the only source of module names for the Streamlit path, which has
+    # no module ids to offer.
+    deck_columns = {row[1] for row in connection.execute("PRAGMA table_info(decks)")}
+    if "module_ids" not in deck_columns:
+        connection.execute("ALTER TABLE decks ADD COLUMN module_ids TEXT")
 
 
 @contextmanager
@@ -105,16 +116,30 @@ class DeckRepository:
 
     def list(self) -> list[Deck]:
         with self._connection() as connection:
-            rows = connection.execute("SELECT id, name, modules_included, subject FROM decks").fetchall()
+            rows = connection.execute("SELECT id, name, modules_included, subject, module_ids FROM decks").fetchall()
         return [Deck(*row) for row in rows]
 
     def get(self, deck_id: int) -> Deck | None:
         with self._connection() as connection:
             row = connection.execute(
-                "SELECT id, name, modules_included, subject FROM decks WHERE id = ?",
+                "SELECT id, name, modules_included, subject, module_ids FROM decks WHERE id = ?",
                 (deck_id,),
             ).fetchone()
         return Deck(*row) if row else None
+
+    def set_module_ids(self, deck_id: int, module_ids: list[str]) -> None:
+        """Record which module ids a deck was generated from, for the Reviewer link.
+
+        Separate from creation because the legacy Streamlit path never has module ids
+        to offer, and the API worker only learns deck_id after persist_valid_cards
+        returns it.
+        """
+
+        with self._connection() as connection:
+            connection.execute(
+                "UPDATE decks SET module_ids = ? WHERE id = ?",
+                (json.dumps(module_ids), deck_id),
+            )
 
     def create_with_cards(
         self, name: str, modules_included: str, subject: str, cards: Iterable[NewCard]

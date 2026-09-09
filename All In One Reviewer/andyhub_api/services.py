@@ -41,6 +41,7 @@ from .schemas import (
     GenerationRequest,
     GradeResult,
     ModuleItem,
+    ModuleRef,
     MultipleChoiceCard,
     ProblemCard,
     QuizCard,
@@ -203,9 +204,10 @@ class ChatService:
 
 
 class DeckService:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, module_lookup: Callable[[str], StoredModule | None] | None = None) -> None:
         self.decks = DeckRepository(database_path)
         self.cards = CardRepository(database_path)
+        self.module_lookup = module_lookup
 
     def list(self, subject: str | None = None, search: str | None = None, limit: int = 50) -> list[DeckSummary]:
         decks = self.decks.list()
@@ -227,13 +229,24 @@ class DeckService:
         cards = self.cards.list_for_deck(deck.id)
         counts = {kind: sum(card.card_type == kind for card in cards) for kind in ("multiple_choice", "enumeration", "problem")}
         modules = [item.strip() for item in deck.modules_included.split(",") if item.strip()]
-        return DeckSummary(id=deck.id, name=deck.name, subject=deck.subject, modules=modules, card_count=len(cards), question_types=counts, total_misses=sum(card.times_missed for card in cards))
+        module_refs = self._module_refs(deck)
+        return DeckSummary(
+            id=deck.id, name=deck.name, subject=deck.subject, modules=modules, module_refs=module_refs,
+            card_count=len(cards), question_types=counts, total_misses=sum(card.times_missed for card in cards),
+        )
+
+    def _module_refs(self, deck: Deck) -> list[ModuleRef] | None:
+        if not deck.module_ids or not self.module_lookup:
+            return None
+        modules = [self.module_lookup(module_id) for module_id in json.loads(deck.module_ids)]
+        return [ModuleRef(id=module.id, filename=module.filename) for module in modules if module is not None]
 
 
 class GenerationService:
     def __init__(self, settings: Settings, repository: ApiRepository, dependencies_factory: Callable[[], GenerationDependencies]) -> None:
         self.settings = settings
         self.repository = repository
+        self.decks = DeckRepository(settings.database_path)
         self.dependencies_factory = dependencies_factory
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -316,6 +329,7 @@ class GenerationService:
                 deck_name=job["deck_name"], subject=job["subject"], selected_files=preparation.selected_files,
                 valid_cards=valid_cards, persist_deck=deps.persist_deck,
             )
+            self.decks.set_module_ids(deck_id, [module.id for module in resolved])
             self._update_job(job["id"], status="complete", stage="complete", progress=100, message="Deck ready", cards_received=len(raw_cards), cards_valid=len(valid_cards), deck_id=deck_id)
             log_event(
                 LOGGER,

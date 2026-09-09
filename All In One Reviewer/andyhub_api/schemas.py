@@ -46,11 +46,20 @@ QuizCard = Annotated[
 ]
 
 
+class ModuleRef(ApiModel):
+    id: str
+    filename: str
+
+
 class DeckSummary(ApiModel):
     id: int
     name: str
     subject: str
     modules: list[str]
+    # None for decks generated before the Reviewer view shipped, or via the
+    # legacy Streamlit path, which never has module ids to offer. `modules`
+    # above stays the display-name list for those; this is additive.
+    module_refs: list[ModuleRef] | None = None
     card_count: int
     question_types: dict[str, int]
     total_misses: int
