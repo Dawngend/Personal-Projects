@@ -90,9 +90,16 @@ class ApiRepository:
                 row[1] for row in connection.execute("PRAGMA table_info(generation_jobs)")
             }
             if "attempts" not in columns:
-                connection.execute(
-                    "ALTER TABLE generation_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
-                )
+                # Same startup race as repositories.py's module_ids migration: two
+                # containers can both see the column missing and both ALTER, so the
+                # loser's "duplicate column name" must be swallowed, not raised.
+                try:
+                    connection.execute(
+                        "ALTER TABLE generation_jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"
+                    )
+                except sqlite3.OperationalError as error:
+                    if "duplicate column name" not in str(error):
+                        raise
 
     def list_modules(self) -> list[StoredModule]:
         with self._connection() as connection:

@@ -75,9 +75,19 @@ def initialize_schema(connection: sqlite3.Connection) -> None:
     # per-module Reviewer link. Legacy modules_included stays untouched; it is
     # still the only source of module names for the Streamlit path, which has
     # no module ids to offer.
+    # The check-then-ALTER above is not atomic across processes: the API and
+    # worker containers both call open_connection at startup, both can see the
+    # column missing, and whichever loses the race hits "duplicate column
+    # name" and crashes (observed on the production api container 2026-09-09,
+    # restarted clean once the column already existed). Swallow exactly that
+    # race instead of the check, so a real schema problem still raises.
     deck_columns = {row[1] for row in connection.execute("PRAGMA table_info(decks)")}
     if "module_ids" not in deck_columns:
-        connection.execute("ALTER TABLE decks ADD COLUMN module_ids TEXT")
+        try:
+            connection.execute("ALTER TABLE decks ADD COLUMN module_ids TEXT")
+        except sqlite3.OperationalError as error:
+            if "duplicate column name" not in str(error):
+                raise
 
 
 @contextmanager
