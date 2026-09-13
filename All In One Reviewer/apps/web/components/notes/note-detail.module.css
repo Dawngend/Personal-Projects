@@ -1,0 +1,313 @@
+.page,
+.state {
+  width: min(980px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 24px 0 80px;
+}
+.header,
+.header nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.wordmark {
+  color: var(--graphite);
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+  text-decoration: none;
+}
+.wordmark span {
+  color: var(--orchid-ink);
+}
+.header nav a,
+.header nav button {
+  border: 1px solid var(--graphite);
+  background: transparent;
+  color: var(--graphite);
+  padding: 9px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+.header nav button:not(.delete) {
+  background: var(--graphite);
+  color: var(--mist-paper);
+}
+.header nav .delete {
+  border-color: var(--error-carmine);
+  color: var(--error-carmine);
+}
+.document {
+  margin-top: 42px;
+  border: 1px solid var(--mist-line);
+  background: var(--mist-paper);
+  padding: clamp(28px, 7vw, 72px);
+  box-shadow: 0 18px 50px rgba(45, 38, 53, 0.08);
+}
+.titleBlock {
+  border-bottom: 2px solid var(--graphite);
+  padding-bottom: 36px;
+}
+.subject,
+.sectionNumber,
+.sources,
+.exampleLabel {
+  color: var(--orchid-ink);
+  font-family: var(--font-mono);
+  font-size: 0.67rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.titleBlock h1,
+.state h1 {
+  margin: 10px 0 14px;
+  font-family: var(--font-display);
+  font-size: clamp(3rem, 8vw, 5.6rem);
+  letter-spacing: -0.075em;
+  line-height: 0.9;
+}
+.titleBlock > p:last-child,
+.state > p {
+  color: #5d5764;
+  line-height: 1.5;
+}
+.section {
+  padding-top: 52px;
+}
+.sectionNumber {
+  margin: 0;
+}
+.section h2 {
+  margin: 8px 0 18px;
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+.section h3 {
+  margin: 0 0 14px;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  letter-spacing: -0.035em;
+}
+.summary {
+  border-left: 3px solid var(--orchid-ink);
+  padding: 3px 0 3px 18px;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+.block,
+.theorem,
+.mistakes {
+  margin-top: 30px;
+}
+.definitionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 0;
+}
+.definitionGrid > div,
+.theorem > div {
+  border: 1px solid var(--mist-line);
+  padding: 16px;
+}
+.definitionGrid dt,
+.theorem strong {
+  color: var(--orchid-ink);
+  font-weight: 700;
+}
+.definitionGrid dd {
+  margin: 7px 0 0;
+  color: #514c58;
+  line-height: 1.45;
+}
+.theorem {
+  display: grid;
+  gap: 8px;
+}
+.theorem :global(.math-prompt) {
+  margin-top: 7px;
+  line-height: 1.5;
+}
+.workedExample {
+  margin-top: 12px;
+  border: 1px solid var(--mist-line);
+  border-left: 4px solid var(--vector-teal);
+  padding: 20px;
+}
+.workedExample > :global(.math-prompt) {
+  font-weight: 600;
+  line-height: 1.5;
+}
+.workedExample ol {
+  display: grid;
+  gap: 8px;
+  padding-left: 25px;
+}
+.workedExample li :global(.math-prompt) {
+  padding-left: 4px;
+  line-height: 1.45;
+}
+.answer {
+  margin-top: 16px;
+  background: var(--teal-wash);
+  padding: 13px;
+}
+.answer > strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--vector-teal);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+.mistakes {
+  background: var(--amber-wash);
+  padding: 19px;
+}
+.mistakes ul {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+.sources {
+  margin-top: 25px;
+  color: #6b6471;
+  text-transform: none;
+}
+.formulaTable {
+  border-top: 1px solid var(--graphite);
+}
+.formulaRow {
+  display: grid;
+  grid-template-columns: 0.7fr 1fr 1.2fr;
+  gap: 18px;
+  align-items: start;
+  border-bottom: 1px solid var(--mist-line);
+  padding: 15px 0;
+}
+.formulaRow > strong {
+  color: var(--orchid-ink);
+}
+.formulaRow > span {
+  color: #5c5762;
+  line-height: 1.4;
+}
+.selfCheck > ol {
+  display: grid;
+  gap: 12px;
+  padding-left: 24px;
+}
+.selfCheck li {
+  padding-left: 8px;
+}
+.selfCheck li p {
+  margin: 5px 0 0;
+  color: #57515d;
+  line-height: 1.45;
+}
+.state {
+  max-width: 720px;
+  padding-top: 120px;
+}
+.state button {
+  border: 1px solid var(--graphite);
+  background: var(--graphite);
+  color: white;
+  padding: 11px 14px;
+}
+.state a {
+  margin-left: 14px;
+  color: var(--orchid-ink);
+  font-weight: 700;
+}
+.error {
+  color: var(--error-carmine);
+}
+@media (max-width: 680px) {
+  .page,
+  .state {
+    width: min(100% - 24px, 980px);
+  }
+  .header {
+    align-items: start;
+  }
+  .header nav {
+    flex-wrap: wrap;
+    justify-content: end;
+  }
+  .document {
+    padding: 25px;
+  }
+  .definitionGrid,
+  .formulaRow {
+    grid-template-columns: 1fr;
+  }
+}
+@media print {
+  .screenOnly,
+  .screenOnly *,
+  .page button,
+  .page nav {
+    display: none !important;
+  }
+  .page {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    background: #fff;
+  }
+  .document {
+    margin: 0;
+    border: 0;
+    background: #fff;
+    padding: 0;
+    box-shadow: none;
+  }
+  .document *,
+  .subject,
+  .sectionNumber,
+  .sources,
+  .definitionGrid dt,
+  .theorem strong,
+  .formulaRow > strong,
+  .formulaRow > span,
+  .selfCheck li p {
+    color: #000 !important;
+  }
+  .section h2 {
+    break-after: avoid;
+    page-break-after: avoid;
+    font-size: 20pt;
+  }
+  .section h3 {
+    break-after: avoid;
+    page-break-after: avoid;
+    font-size: 13pt;
+  }
+  .workedExample,
+  .formulaRow {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .answer,
+  .mistakes {
+    background: #fff;
+    border: 1px solid #000;
+  }
+  .section {
+    padding-top: 28pt;
+  }
+  @page {
+    margin: 16mm;
+  }
+}

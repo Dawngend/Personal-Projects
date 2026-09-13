@@ -4,6 +4,7 @@
   padding: 24px 0 72px;
 }
 .topline,
+.topline nav,
 .libraryHead {
   display: flex;
   align-items: center;

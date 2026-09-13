@@ -1,0 +1,75 @@
+.briefGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.briefGrid label {
+  display: grid;
+  gap: 7px;
+  color: #494450;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.briefGrid input {
+  min-width: 0;
+  border: 1px solid var(--mist-line);
+  background: var(--mist-paper);
+  padding: 12px;
+  color: var(--graphite);
+  font-family: var(--font-body);
+  font-size: 0.97rem;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.depthGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.depthGrid label {
+  position: relative;
+  border: 1px solid var(--mist-line);
+  background: rgba(246, 246, 251, 0.76);
+  padding: 15px;
+  cursor: pointer;
+}
+.depthGrid label:has(input:checked) {
+  border-color: var(--orchid-ink);
+  background: var(--orchid-wash);
+  box-shadow: inset 3px 0 var(--orchid-ink);
+}
+.depthGrid input {
+  position: absolute;
+  opacity: 0;
+}
+.depthGrid strong,
+.depthGrid small {
+  display: block;
+}
+.depthGrid strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+}
+.depthGrid small {
+  margin-top: 5px;
+  color: #625d6b;
+  font-size: 0.84rem;
+  line-height: 1.3;
+}
+.uploadHint {
+  color: #625d6b;
+}
+.uploadHint a {
+  color: var(--orchid-ink);
+  font-weight: 700;
+}
+@media (max-width: 640px) {
+  .briefGrid,
+  .depthGrid {
+    grid-template-columns: 1fr;
+  }
+}

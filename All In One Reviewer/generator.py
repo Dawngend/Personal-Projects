@@ -107,6 +107,32 @@ def get_andy_prompt(target_count: int, question_style: str = "mixed") -> str:
     )
 
 
+def get_andy_note_prompt(depth: str, source_names: list[str]) -> str:
+    """Build the strict structured-output contract for printable study notes."""
+    depth_instructions = {
+        "summary": "Keep each section concise and focus only on essential ideas and formulas.",
+        "standard": "Explain the major ideas with useful detail and representative worked examples.",
+        "deep": "Cover the material thoroughly, including derivations, edge cases, and detailed examples.",
+    }
+    if depth not in depth_instructions:
+        raise ValueError(f"Unsupported note depth: {depth}")
+    sources = ", ".join(source_names)
+    return (
+        "You are Andy, an exacting study-note editor. Build a written, printable reviewer using "
+        "only the supplied module content and relevant course memory. "
+        f"{depth_instructions[depth]} "
+        f"Use these source filenames in source_refs when applicable: {sources}. "
+        "Return one JSON object with exactly these top-level keys: sections, formula_sheet, self_check. "
+        "Each sections item must contain heading (string), summary (string), key_terms (array of "
+        "objects with term and definition), properties (array of objects with name and statement), "
+        "worked_examples (array of objects with problem, steps as an array of strings, and answer), "
+        "common_mistakes (array of strings), and source_refs (array of strings). Each formula_sheet "
+        "item must contain name, expression, and when_to_use strings. Each self_check item must "
+        "contain question and answer strings. Use empty arrays when a category does not apply; never "
+        "omit a required key. Do not wrap the JSON in Markdown fences."
+    )
+
+
 def _question_style_instruction(question_style: str, target_count: int) -> str:
     if question_style not in QUESTION_STYLES:
         raise ValueError(f"Unsupported question style: {question_style}")
@@ -366,6 +392,31 @@ def _query_groq(client: Groq, text_chunk: str, system_prompt: str = SYSTEM_PROMP
         return []
 
 
+def _query_note(client: Groq, text_chunk: str, system_prompt: str) -> dict:
+    """Generate one structured note fragment for a prepared module chunk."""
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": "Create study notes based ONLY on this module content:\n\n" + text_chunk,
+                },
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_completion_tokens=MAX_COMPLETION_TOKENS,
+        )
+        data = json.loads(_strip_json_fences(response.choices[0].message.content))
+        if not isinstance(data, dict):
+            return {}
+        return data
+    except Exception as error:
+        print(f"  [Warning] Structured note generation failed: {error}")
+        return {}
+
+
 # ── Card validation ───────────────────────────────────────────────────────────
 
 def _validate_card(card: dict, index: int) -> bool:
@@ -488,6 +539,7 @@ class GenerationDependencies:
     add_memory: Callable[[str, str, list[str]], None]
     persist_deck: Callable[[str, str, str, list[NewCard]], int]
     sleep: Callable[[float], None]
+    query_notes: Callable[[Groq, str, str], dict] | None = None
 
 
 def prepare_custom_deck(
@@ -576,6 +628,7 @@ def default_generation_dependencies() -> GenerationDependencies:
         add_memory=add_to_memory,
         persist_deck=create_deck_with_cards,
         sleep=time.sleep,
+        query_notes=_query_note,
     )
 
 

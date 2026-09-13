@@ -12,6 +12,13 @@ import {
   type GradeResult,
   ModuleSchema,
   type ModuleItem,
+  NoteDetailSchema,
+  type NoteDetail,
+  NoteJobSchema,
+  type NoteJob,
+  type NoteRequest,
+  NoteSummarySchema,
+  type NoteSummary,
   QuizSessionSchema,
   type QuizSession,
   RevealResultSchema,
@@ -76,6 +83,25 @@ export const api = {
     ),
   getGeneration: (jobId: string) =>
     request(`/generation-jobs/${jobId}`, undefined, (body) => GenerationJobSchema.parse(body)),
+  listNotes: () =>
+    request("/notes", undefined, (body) =>
+      (body as unknown[]).map((item) => NoteSummarySchema.parse(item)),
+    ),
+  getNote: (noteId: number) =>
+    request(`/notes/${noteId}`, undefined, (body) => NoteDetailSchema.parse(body)),
+  deleteNote: (noteId: number) => request<void>(`/notes/${noteId}`, { method: "DELETE" }),
+  startNoteGeneration: (payload: NoteRequest) =>
+    request(
+      "/note-jobs",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      (body) => NoteJobSchema.parse(body),
+    ),
+  getNoteGeneration: (jobId: string) =>
+    request(`/note-jobs/${jobId}`, undefined, (body) => NoteJobSchema.parse(body)),
   startSession: (deckId: number, mode: "all" | "missed") =>
     request(
       "/quiz-sessions",
@@ -183,6 +209,19 @@ export function subscribeToGeneration(
   return () => events.close();
 }
 
+export function subscribeToNoteGeneration(
+  jobId: string,
+  onJob: (job: NoteJob) => void,
+  onError: () => void,
+): () => void {
+  const events = new EventSource(`${API_BASE}/note-jobs/${jobId}/events`);
+  events.addEventListener("progress", (event) =>
+    onJob(NoteJobSchema.parse(JSON.parse((event as MessageEvent).data))),
+  );
+  events.onerror = onError;
+  return () => events.close();
+}
+
 export type {
   DeckSummary,
   ModuleItem,
@@ -192,4 +231,7 @@ export type {
   SessionSummary,
   ChatMessage,
   ChatAction,
+  NoteDetail,
+  NoteJob,
+  NoteSummary,
 };

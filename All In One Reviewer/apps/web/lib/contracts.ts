@@ -57,6 +57,84 @@ export const GenerationJobSchema = z.object({
 });
 export type GenerationJob = z.infer<typeof GenerationJobSchema>;
 
+export const NoteDepthSchema = z.enum(["summary", "standard", "deep"]);
+export type NoteDepth = z.infer<typeof NoteDepthSchema>;
+
+export const NoteRequestSchema = z.object({
+  title: z.string().trim().min(2, "Name the notes."),
+  subject: z.string().trim().min(2, "Add a subject."),
+  moduleIds: z.array(z.string().startsWith("mod_")).min(1, "Choose at least one module."),
+  depth: NoteDepthSchema,
+});
+export type NoteRequest = z.infer<typeof NoteRequestSchema>;
+
+export const NoteJobSchema = z.object({
+  id: z.string().startsWith("notejob_"),
+  status: z.enum(["queued", "running", "complete", "failed"]),
+  stage: z.enum([
+    "queued",
+    "extracting",
+    "retrieving_memory",
+    "generating",
+    "validating",
+    "saving",
+    "complete",
+    "failed",
+  ]),
+  progress: z.number().min(0).max(100),
+  message: z.string().nullable().optional(),
+  sectionsReceived: z.number().int(),
+  sectionsValid: z.number().int(),
+  noteId: z.number().int().nullable().optional(),
+  error: z.string().nullable().optional(),
+});
+export type NoteJob = z.infer<typeof NoteJobSchema>;
+
+const KeyTermSchema = z.object({ term: z.string(), definition: z.string() }).strict();
+const NotePropertySchema = z.object({ name: z.string(), statement: z.string() }).strict();
+const WorkedExampleSchema = z
+  .object({ problem: z.string(), steps: z.array(z.string()), answer: z.string() })
+  .strict();
+const NoteSectionSchema = z
+  .object({
+    heading: z.string(),
+    summary: z.string(),
+    keyTerms: z.array(KeyTermSchema),
+    properties: z.array(NotePropertySchema),
+    workedExamples: z.array(WorkedExampleSchema),
+    commonMistakes: z.array(z.string()),
+    sourceRefs: z.array(z.string()),
+  })
+  .strict();
+const FormulaSchema = z
+  .object({ name: z.string(), expression: z.string(), whenToUse: z.string() })
+  .strict();
+const SelfCheckSchema = z.object({ question: z.string(), answer: z.string() }).strict();
+
+export const NoteContentSchema = z
+  .object({
+    sections: z.array(NoteSectionSchema),
+    formulaSheet: z.array(FormulaSchema),
+    selfCheck: z.array(SelfCheckSchema),
+  })
+  .strict();
+export type NoteContent = z.infer<typeof NoteContentSchema>;
+
+export const NoteSummarySchema = z
+  .object({
+    id: z.number().int(),
+    title: z.string(),
+    subject: z.string(),
+    moduleIds: z.array(z.string()),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .strict();
+export type NoteSummary = z.infer<typeof NoteSummarySchema>;
+
+export const NoteDetailSchema = NoteSummarySchema.extend({ content: NoteContentSchema });
+export type NoteDetail = z.infer<typeof NoteDetailSchema>;
+
 const MultipleChoiceCard = z
   .object({
     id: z.number(),

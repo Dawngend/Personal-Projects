@@ -1,4 +1,4 @@
-"""Dedicated single generation worker with an internal health endpoint."""
+"""Dedicated generation worker process with an internal health endpoint."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import time
 from generator import default_generation_dependencies
 
 from .persistence import ApiRepository
-from .services import GenerationService
+from .services import GenerationService, NoteService
 from .settings import Settings
 from .structured_logging import configure_logging, log_event
 
@@ -25,7 +25,9 @@ def main() -> int:
     configure_logging()
     settings = Settings.defaults()
     repository = ApiRepository(settings.database_path)
-    service = GenerationService(settings, repository, default_generation_dependencies)
+    work_lock = threading.Lock()
+    service = GenerationService(settings, repository, default_generation_dependencies, work_lock)
+    note_service = NoteService(settings, repository, default_generation_dependencies, work_lock)
     stop = threading.Event()
 
     def request_stop(*_: object) -> None:
@@ -35,9 +37,10 @@ def main() -> int:
     signal.signal(signal.SIGINT, request_stop)
 
     service.start()
+    note_service.start()
     server = ThreadingHTTPServer(
         ("0.0.0.0", int(os.environ.get("ANDYHUB_WORKER_HEALTH_PORT", "8001"))),
-        _health_handler(service, repository),
+        _health_handler(service, note_service, repository),
     )
     health_thread = threading.Thread(target=server.serve_forever, daemon=True)
     health_thread.start()
@@ -48,18 +51,21 @@ def main() -> int:
     finally:
         server.shutdown()
         service.stop()
+        note_service.stop()
         server.server_close()
         log_event(LOGGER, "worker_stopped", service="worker")
     return 0
 
 
-def _health_handler(service: GenerationService, repository: ApiRepository):
+def _health_handler(
+    service: GenerationService, note_service: NoteService, repository: ApiRepository
+):
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             if self.path != "/health":
                 self.send_error(404)
                 return
-            worker_alive = service.is_running
+            worker_alive = service.is_running and note_service.is_running
             database_ok = repository.ping()
             status = "ok" if worker_alive and database_ok else "degraded"
             body = json.dumps(

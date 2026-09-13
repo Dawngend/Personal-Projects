@@ -14,6 +14,7 @@ from typing import Callable
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
+from pydantic import ValidationError
 
 from extractor import process_module_file_v2
 from generator import (
@@ -21,6 +22,7 @@ from generator import (
     GenerationDependencies,
     _chunk_text,
     _get_client,
+    get_andy_note_prompt,
     get_andy_prompt,
     persist_valid_cards,
     prepare_custom_deck,
@@ -43,6 +45,14 @@ from .schemas import (
     ModuleItem,
     ModuleRef,
     MultipleChoiceCard,
+    NoteContent,
+    NoteDetail,
+    NoteJob,
+    NoteRequest,
+    NoteSection,
+    NoteSummary,
+    Formula,
+    SelfCheck,
     ProblemCard,
     QuizCard,
     QuizSession,
@@ -77,6 +87,44 @@ def safe_card(card: Card) -> QuizCard:
     if card.card_type == "problem":
         return ProblemCard(id=card.id, type="problem", question=card.question, answer_format_hint="Final answer (scalar/text auto-grading)")
     raise HTTPException(status_code=500, detail={"code": "unsupported_card", "message": "Stored card type is unsupported"})
+
+
+def validate_generated_note(payloads: list[dict]) -> tuple[NoteContent, int, int]:
+    """Retain independently valid structured note items from provider output."""
+    sections: list[NoteSection] = []
+    formulas: list[Formula] = []
+    self_checks: list[SelfCheck] = []
+    sections_received = 0
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        raw_sections = payload.get("sections")
+        raw_formulas = payload.get("formula_sheet")
+        raw_checks = payload.get("self_check")
+        if (
+            not isinstance(raw_sections, list)
+            or not isinstance(raw_formulas, list)
+            or not isinstance(raw_checks, list)
+        ):
+            continue
+        sections_received += len(raw_sections)
+        for section in raw_sections:
+            try:
+                sections.append(NoteSection.model_validate(section))
+            except ValidationError:
+                continue
+        for formula in raw_formulas:
+            try:
+                formulas.append(Formula.model_validate(formula))
+            except ValidationError:
+                continue
+        for self_check in raw_checks:
+            try:
+                self_checks.append(SelfCheck.model_validate(self_check))
+            except ValidationError:
+                continue
+    content = NoteContent(sections=sections, formula_sheet=formulas, self_check=self_checks)
+    return content, sections_received, len(sections)
 
 
 class ModuleService:
@@ -243,11 +291,16 @@ class DeckService:
 
 
 class GenerationService:
-    def __init__(self, settings: Settings, repository: ApiRepository, dependencies_factory: Callable[[], GenerationDependencies]) -> None:
+    def __init__(
+        self, settings: Settings, repository: ApiRepository,
+        dependencies_factory: Callable[[], GenerationDependencies],
+        work_lock: threading.Lock | None = None,
+    ) -> None:
         self.settings = settings
         self.repository = repository
         self.decks = DeckRepository(settings.database_path)
         self.dependencies_factory = dependencies_factory
+        self._work_lock = work_lock or threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -379,7 +432,162 @@ class GenerationService:
 
     def _worker_loop(self) -> None:
         while not self._stop.is_set():
-            if not self.run_pending_once():
+            with self._work_lock:
+                worked = self.run_pending_once()
+            if not worked:
+                self._stop.wait(0.1)
+
+
+class NoteService:
+    def __init__(
+        self, settings: Settings, repository: ApiRepository,
+        dependencies_factory: Callable[[], GenerationDependencies],
+        work_lock: threading.Lock | None = None,
+    ) -> None:
+        self.settings = settings
+        self.repository = repository
+        self.dependencies_factory = dependencies_factory
+        self._work_lock = work_lock or threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def submit(self, request: NoteRequest) -> NoteJob:
+        missing = [module_id for module_id in request.module_ids if not self.repository.get_module(module_id)]
+        if missing:
+            raise HTTPException(status_code=422, detail={"code": "unknown_modules", "message": "One or more module IDs do not exist", "details": {"module_ids": missing}})
+        return self.job(self.repository.create_note_job(request))
+
+    def job(self, job_id: str) -> NoteJob:
+        row = self.repository.get_note_job(job_id)
+        if not row:
+            raise _not_found("Note job")
+        return NoteJob(**row)
+
+    def list(self) -> list[NoteSummary]:
+        return [self._summary(row) for row in self.repository.list_notes()]
+
+    def get(self, note_id: int) -> NoteDetail:
+        row = self.repository.get_note(note_id)
+        if not row:
+            raise _not_found("Note")
+        return NoteDetail(
+            **self._summary(row).model_dump(),
+            content=NoteContent.model_validate(json.loads(row["content"])),
+        )
+
+    def delete(self, note_id: int) -> None:
+        if not self.repository.delete_note(note_id):
+            raise _not_found("Note")
+
+    @staticmethod
+    def _summary(row: dict) -> NoteSummary:
+        return NoteSummary(
+            id=row["id"], title=row["title"], subject=row["subject"],
+            module_ids=json.loads(row["module_ids"]), created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def start(self) -> None:
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._worker_loop, name="andyhub-note-worker", daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=2)
+
+    @property
+    def is_running(self) -> bool:
+        return bool(self._thread and self._thread.is_alive())
+
+    def run_pending_once(self) -> bool:
+        job = self.repository.claim_next_note_job()
+        if not job:
+            return False
+        started = time.perf_counter()
+        log_event(LOGGER, "note_job_started", service="worker", job_id=job["id"])
+        try:
+            modules = [self.repository.get_module(module_id) for module_id in json.loads(job["module_ids"])]
+            if any(module is None for module in modules):
+                raise ValueError("A selected module no longer exists")
+            resolved = [module for module in modules if module is not None]
+            deps = self.dependencies_factory()
+            if deps.query_notes is None:
+                raise RuntimeError("Structured note generation is not configured")
+            self._update_job(job["id"], stage="extracting", progress=10, message="Extracting selected modules")
+            preparation = prepare_custom_deck(
+                [module.stored_filename for module in resolved],
+                display_names=[module.filename for module in resolved],
+                extract_file=deps.extract_file,
+                uploads_directory=str(self.settings.uploads_directory),
+                report=lambda _: None,
+            )
+            if preparation is None:
+                raise ValueError("No usable text was extracted from the selected modules")
+            self._update_job(job["id"], stage="retrieving_memory", progress=25, message="Preparing subject memory")
+            client = deps.create_client()
+            raw_notes: list[dict] = []
+            prompt = get_andy_note_prompt(job["depth"], list(preparation.selected_files))
+            for index, chunk in enumerate(preparation.chunks, start=1):
+                self._update_job(
+                    job["id"], stage="generating",
+                    progress=25 + int(55 * (index - 1) / len(preparation.chunks)),
+                    message=f"Generating notes from module chunk {index} of {len(preparation.chunks)}",
+                    sections_received=sum(
+                        len(item.get("sections", [])) for item in raw_notes
+                        if isinstance(item, dict) and isinstance(item.get("sections"), list)
+                    ),
+                )
+                raw_notes.append(deps.query_notes(client, chunk + deps.get_context(chunk, job["subject"]), prompt))
+                if index < len(preparation.chunks):
+                    deps.sleep(2)
+            deps.add_memory(job["title"], job["subject"], list(preparation.chunks))
+            received = sum(
+                len(item.get("sections", [])) for item in raw_notes
+                if isinstance(item, dict) and isinstance(item.get("sections"), list)
+            )
+            self._update_job(job["id"], stage="validating", progress=85, message="Validating generated sections", sections_received=received)
+            content, received, valid = validate_generated_note(raw_notes)
+            self._update_job(job["id"], stage="saving", progress=95, message="Saving generated notes", sections_received=received, sections_valid=valid)
+            note_id = self.repository.create_note(
+                job["title"], job["subject"], [module.id for module in resolved],
+                content.model_dump(mode="json"),
+            )
+            self._update_job(
+                job["id"], status="complete", stage="complete", progress=100,
+                message="Notes ready", sections_received=received, sections_valid=valid,
+                note_id=note_id,
+            )
+            log_event(
+                LOGGER, "note_job_completed", service="worker", job_id=job["id"],
+                stage="complete", duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                sections_received=received, sections_valid=valid,
+            )
+        except Exception as exc:
+            self._update_job(job["id"], status="failed", stage="failed", message="Note generation failed", error=str(exc)[:500])
+            log_event(
+                LOGGER, "note_job_failed", service="worker", job_id=job["id"],
+                stage="failed", duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                error_code=type(exc).__name__,
+            )
+        return True
+
+    def _update_job(self, job_id: str, **fields: object) -> None:
+        self.repository.update_note_job(job_id, **fields)
+        safe_fields = {
+            key: value for key, value in fields.items()
+            if key in {"status", "stage", "progress", "sections_received", "sections_valid", "note_id"}
+        }
+        log_event(LOGGER, "note_job_progress", service="worker", job_id=job_id, **safe_fields)
+
+    def _worker_loop(self) -> None:
+        while not self._stop.is_set():
+            with self._work_lock:
+                worked = self.run_pending_once()
+            if not worked:
                 self._stop.wait(0.1)
 
 

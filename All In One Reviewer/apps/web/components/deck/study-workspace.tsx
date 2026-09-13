@@ -18,9 +18,14 @@ export function StudyWorkspace() {
         <Link className={styles.wordmark} href="/" aria-label="AndyHub study workspace">
           Andy<span>Hub</span>
         </Link>
-        <Link className={styles.createLink} href="/decks/new">
-          Create deck <span aria-hidden="true">↗</span>
-        </Link>
+        <nav aria-label="Workspace navigation">
+          <Link className={styles.createLink} href="/notes">
+            Notes
+          </Link>
+          <Link className={styles.createLink} href="/decks/new">
+            Create deck <span aria-hidden="true">↗</span>
+          </Link>
+        </nav>
       </header>
       <section className={styles.intro} aria-labelledby="workspace-title">
         <p className={styles.kicker}>Study workspace · local course memory</p>

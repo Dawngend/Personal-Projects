@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 QuestionStyle = Literal["multiple_choice", "enumeration", "problem", "mixed"]
+NoteDepth = Literal["summary", "standard", "deep"]
 
 
 def _camel_case(value: str) -> str:
@@ -101,6 +102,81 @@ class GenerationJob(ApiModel):
     cards_valid: int = 0
     deck_id: int | None = None
     error: str | None = None
+
+
+class NoteRequest(ApiModel):
+    title: str = Field(min_length=1, max_length=200)
+    subject: str = Field(min_length=1, max_length=200)
+    module_ids: list[str] = Field(min_length=1)
+    depth: NoteDepth = "standard"
+
+
+class NoteJob(ApiModel):
+    id: str
+    status: Literal["queued", "running", "complete", "failed"]
+    stage: Literal["queued", "extracting", "retrieving_memory", "generating", "validating", "saving", "complete", "failed"]
+    progress: int = Field(ge=0, le=100)
+    message: str | None = None
+    sections_received: int = 0
+    sections_valid: int = 0
+    note_id: int | None = None
+    error: str | None = None
+
+
+class KeyTerm(ApiModel):
+    term: str = Field(min_length=1)
+    definition: str = Field(min_length=1)
+
+
+class NoteProperty(ApiModel):
+    name: str = Field(min_length=1)
+    statement: str = Field(min_length=1)
+
+
+class WorkedExample(ApiModel):
+    problem: str = Field(min_length=1)
+    steps: list[str] = Field(min_length=1)
+    answer: str = Field(min_length=1)
+
+
+class NoteSection(ApiModel):
+    heading: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    key_terms: list[KeyTerm]
+    properties: list[NoteProperty]
+    worked_examples: list[WorkedExample]
+    common_mistakes: list[str]
+    source_refs: list[str]
+
+
+class Formula(ApiModel):
+    name: str = Field(min_length=1)
+    expression: str = Field(min_length=1)
+    when_to_use: str = Field(min_length=1)
+
+
+class SelfCheck(ApiModel):
+    question: str = Field(min_length=1)
+    answer: str = Field(min_length=1)
+
+
+class NoteContent(ApiModel):
+    sections: list[NoteSection] = Field(min_length=1)
+    formula_sheet: list[Formula]
+    self_check: list[SelfCheck]
+
+
+class NoteSummary(ApiModel):
+    id: int
+    title: str
+    subject: str
+    module_ids: list[str]
+    created_at: str
+    updated_at: str
+
+
+class NoteDetail(NoteSummary):
+    content: NoteContent
 
 
 class QuizSessionRequest(ApiModel):

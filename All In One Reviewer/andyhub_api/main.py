@@ -7,13 +7,14 @@ import json
 import logging
 import os
 from pathlib import Path
+import threading
 import time
 from typing import AsyncIterator, Callable
 from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from generator import GenerationDependencies, default_generation_dependencies
 from rag_engine import initialize_course_memory
@@ -29,13 +30,17 @@ from .schemas import (
     GradeResult,
     ModuleItem,
     ModuleList,
+    NoteDetail,
+    NoteJob,
+    NoteRequest,
+    NoteSummary,
     QuizSession,
     QuizSessionRequest,
     RevealResult,
     SessionSummary,
     SubmitAnswer,
 )
-from .services import ALLOWED_UPLOADS, ChatService, DeckService, GenerationService, ModuleService, QuizService
+from .services import ALLOWED_UPLOADS, ChatService, DeckService, GenerationService, ModuleService, NoteService, QuizService
 from .settings import Settings
 from .structured_logging import configure_logging, log_event
 
@@ -53,7 +58,9 @@ def create_app(
     repository = ApiRepository(settings.database_path)
     module_service = ModuleService(settings, repository)
     deck_service = DeckService(settings.database_path, module_lookup=repository.get_module)
-    generation_service = GenerationService(settings, repository, dependencies_factory)
+    worker_lock = threading.Lock()
+    generation_service = GenerationService(settings, repository, dependencies_factory, worker_lock)
+    note_service = NoteService(settings, repository, dependencies_factory, worker_lock)
     quiz_service = QuizService(repository, settings.database_path)
     chat_service = ChatService(settings, repository, module_service)
 
@@ -67,15 +74,18 @@ def create_app(
                 app.state.course_memory_status = "unavailable"
         if settings.start_generation_worker:
             generation_service.start()
+            note_service.start()
         try:
             yield
         finally:
             if settings.start_generation_worker:
                 generation_service.stop()
+                note_service.stop()
 
     app = FastAPI(title="AndyHub API", version="1.0.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.generation_service = generation_service
+    app.state.note_service = note_service
 
     @app.middleware("http")
     async def structured_request_log(request: Request, call_next):
@@ -142,7 +152,7 @@ def create_app(
 
     @app.get("/api/v1/capabilities")
     def capabilities() -> dict[str, object]:
-        return {"file_types": list(ALLOWED_UPLOADS.values()), "max_upload_bytes": settings.max_upload_bytes, "question_styles": ["multiple_choice", "enumeration", "problem", "mixed"], "features": {"sse_generation_progress": True, "durable_quiz_sessions": True}}
+        return {"file_types": list(ALLOWED_UPLOADS.values()), "max_upload_bytes": settings.max_upload_bytes, "question_styles": ["multiple_choice", "enumeration", "problem", "mixed"], "note_depths": ["summary", "standard", "deep"], "features": {"sse_generation_progress": True, "generated_notes": True, "durable_quiz_sessions": True}}
 
     @app.get("/api/v1/modules", response_model=ModuleList)
     def list_modules() -> ModuleList:
@@ -208,6 +218,46 @@ def create_app(
                 await asyncio.sleep(0.1)
 
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    @app.post("/api/v1/note-jobs", status_code=202, response_model=NoteJob)
+    def create_note_job(request: NoteRequest) -> NoteJob:
+        return note_service.submit(request)
+
+    @app.get("/api/v1/note-jobs/{job_id}", response_model=NoteJob)
+    def get_note_job(job_id: str) -> NoteJob:
+        return note_service.job(job_id)
+
+    @app.get("/api/v1/note-jobs/{job_id}/events")
+    async def note_events(job_id: str) -> StreamingResponse:
+        note_service.job(job_id)
+
+        async def stream() -> AsyncIterator[str]:
+            last = None
+            while True:
+                job = note_service.job(job_id).model_dump(mode="json", by_alias=True)
+                payload = json.dumps(job, separators=(",", ":"))
+                if payload != last:
+                    yield f"event: progress\ndata: {payload}\n\n"
+                    last = payload
+                if job["status"] in {"complete", "failed"}:
+                    break
+                import asyncio
+                await asyncio.sleep(0.1)
+
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/api/v1/notes", response_model=list[NoteSummary])
+    def list_notes() -> list[NoteSummary]:
+        return note_service.list()
+
+    @app.get("/api/v1/notes/{note_id}", response_model=NoteDetail)
+    def get_note(note_id: int) -> NoteDetail:
+        return note_service.get(note_id)
+
+    @app.delete("/api/v1/notes/{note_id}", status_code=204)
+    def delete_note(note_id: int) -> Response:
+        note_service.delete(note_id)
+        return Response(status_code=204)
 
     @app.post("/api/v1/quiz-sessions", response_model=QuizSession)
     def create_quiz_session(request: QuizSessionRequest) -> QuizSession:

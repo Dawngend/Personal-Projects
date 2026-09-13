@@ -66,6 +66,22 @@ class ApiRepository:
                     deck_id INTEGER, error TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL,
+                    subject TEXT NOT NULL, module_ids TEXT NOT NULL, content TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE TABLE IF NOT EXISTS note_jobs (
+                    id TEXT PRIMARY KEY, title TEXT NOT NULL, subject TEXT NOT NULL,
+                    module_ids TEXT NOT NULL, depth TEXT NOT NULL, status TEXT NOT NULL,
+                    stage TEXT NOT NULL, progress INTEGER NOT NULL DEFAULT 0, message TEXT,
+                    sections_received INTEGER NOT NULL DEFAULT 0,
+                    sections_valid INTEGER NOT NULL DEFAULT 0, note_id INTEGER, error TEXT,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
                 CREATE TABLE IF NOT EXISTS quiz_sessions (
                     id TEXT PRIMARY KEY, deck_id INTEGER NOT NULL, mode TEXT NOT NULL, card_order TEXT NOT NULL,
                     current_index INTEGER NOT NULL DEFAULT 0, completed INTEGER NOT NULL DEFAULT 0,
@@ -205,6 +221,100 @@ class ApiRepository:
         values = [value for key, value in fields.items() if key != "updated_at"] + [job_id]
         with self._connection() as connection:
             connection.execute(f"UPDATE generation_jobs SET {assignments} WHERE id = ?", values)
+
+    def create_note_job(self, payload: Any) -> str:
+        job_id = f"notejob_{uuid4().hex}"
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT INTO note_jobs (id, title, subject, module_ids, depth, status, stage) "
+                "VALUES (?, ?, ?, ?, ?, 'queued', 'queued')",
+                (job_id, payload.title, payload.subject, json.dumps(payload.module_ids), payload.depth),
+            )
+        return job_id
+
+    def get_note_job(self, job_id: str) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute("SELECT * FROM note_jobs WHERE id = ?", (job_id,)).fetchone()
+        return dict(row) if row else None
+
+    def claim_next_note_job(self) -> dict[str, Any] | None:
+        """Atomically claim note work and stop poison jobs from blocking the queue."""
+        with self._connection() as connection:
+            connection.row_factory = sqlite3.Row
+            if not connection.in_transaction:
+                connection.execute("BEGIN IMMEDIATE")
+            while True:
+                row = connection.execute(
+                    "SELECT id, attempts FROM note_jobs"
+                    " WHERE status IN ('queued', 'running') ORDER BY created_at LIMIT 1"
+                ).fetchone()
+                if not row:
+                    return None
+                if row["attempts"] >= self.MAX_JOB_ATTEMPTS:
+                    connection.execute(
+                        "UPDATE note_jobs SET status = 'failed', stage = 'failed',"
+                        " message = ?, error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                        (
+                            "Note generation failed repeatedly and was stopped",
+                            f"Job was claimed {row['attempts']} times without completing. "
+                            "It is treated as poison so the queue can continue.",
+                            row["id"],
+                        ),
+                    )
+                    continue
+                connection.execute(
+                    "UPDATE note_jobs SET status = 'running', stage = 'extracting',"
+                    " message = 'Preparing uploaded modules', attempts = attempts + 1,"
+                    " updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (row["id"],),
+                )
+                claimed = connection.execute(
+                    "SELECT * FROM note_jobs WHERE id = ?", (row["id"],)
+                ).fetchone()
+                return dict(claimed)
+
+    def update_note_job(self, job_id: str, **fields: Any) -> None:
+        if not fields:
+            return
+        fields["updated_at"] = "CURRENT_TIMESTAMP"
+        assignments = ", ".join(
+            f"{key} = {value}" if key == "updated_at" else f"{key} = ?"
+            for key, value in fields.items()
+        )
+        values = [value for key, value in fields.items() if key != "updated_at"] + [job_id]
+        with self._connection() as connection:
+            connection.execute(f"UPDATE note_jobs SET {assignments} WHERE id = ?", values)
+
+    def create_note(
+        self, title: str, subject: str, module_ids: list[str], content: dict[str, Any]
+    ) -> int:
+        with self._connection() as connection:
+            cursor = connection.execute(
+                "INSERT INTO notes (title, subject, module_ids, content) VALUES (?, ?, ?, ?)",
+                (title, subject, json.dumps(module_ids), json.dumps(content)),
+            )
+            return int(cursor.lastrowid)
+
+    def list_notes(self) -> list[dict[str, Any]]:
+        with self._connection() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                "SELECT id, title, subject, module_ids, created_at, updated_at "
+                "FROM notes ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_note(self, note_id: int) -> dict[str, Any] | None:
+        with self._connection() as connection:
+            connection.row_factory = sqlite3.Row
+            row = connection.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
+        return dict(row) if row else None
+
+    def delete_note(self, note_id: int) -> bool:
+        with self._connection() as connection:
+            cursor = connection.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+            return cursor.rowcount > 0
 
     def create_session(self, deck_id: int, mode: str, card_ids: list[int]) -> str:
         session_id = f"quiz_{uuid4().hex}"

@@ -3,6 +3,8 @@ import {
   DeckDetailSchema,
   GenerationJobSchema,
   GradeResultSchema,
+  NoteDetailSchema,
+  NoteJobSchema,
   QuizCardSchema,
   QuizSessionSchema,
   RevealResultSchema,
@@ -38,6 +40,49 @@ describe("Phase 2 API client contract", () => {
         error: null,
       }).progress,
     ).toBe(62);
+    expect(
+      NoteJobSchema.parse({
+        id: "notejob_abc",
+        status: "running",
+        stage: "validating",
+        progress: 85,
+        message: "Validating generated sections",
+        sectionsReceived: 4,
+        sectionsValid: 3,
+        noteId: null,
+        error: null,
+      }).sectionsValid,
+    ).toBe(3);
+  });
+
+  it("validates structured generated notes", () => {
+    expect(
+      NoteDetailSchema.parse({
+        id: 1,
+        title: "Algebra notes",
+        subject: "Math",
+        moduleIds: ["mod_abc"],
+        createdAt: "2026-09-13 10:00:00",
+        updatedAt: "2026-09-13 10:00:00",
+        content: {
+          sections: [
+            {
+              heading: "Vector spaces",
+              summary: "A compact summary.",
+              keyTerms: [{ term: "basis", definition: "Independent and spanning." }],
+              properties: [{ name: "closure", statement: "The result stays in the set." }],
+              workedExamples: [
+                { problem: "Test closure", steps: ["Add vectors"], answer: "Closed" },
+              ],
+              commonMistakes: ["Testing only one case"],
+              sourceRefs: ["week-1.pdf"],
+            },
+          ],
+          formulaSheet: [{ name: "Span", expression: "a_1v_1", whenToUse: "Linear combinations" }],
+          selfCheck: [{ question: "What is a basis?", answer: "Independent and spanning." }],
+        },
+      }).content.sections[0].heading,
+    ).toBe("Vector spaces");
   });
 
   it("validates deck detail and session payloads without accepting answer keys ahead of grading", () => {
@@ -98,7 +143,9 @@ describe("Phase 2 API client contract", () => {
     const base = { correct: true, complete: true, feedback: "Correct." };
     // A verbatim match and an accepted equivalent form must be distinguishable.
     expect(GradeResultSchema.parse({ ...base, matchedTier: "exact" }).matchedTier).toBe("exact");
-    expect(GradeResultSchema.parse({ ...base, matchedTier: "numeric" }).matchedTier).toBe("numeric");
+    expect(GradeResultSchema.parse({ ...base, matchedTier: "numeric" }).matchedTier).toBe(
+      "numeric",
+    );
     expect(GradeResultSchema.parse({ ...base, matchedTier: "structured" }).matchedTier).toBe(
       "structured",
     );

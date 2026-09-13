@@ -1,31 +1,50 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import type { GenerationJob, ModuleItem } from "@/lib/contracts";
+import type { GenerationJob, ModuleItem, NoteJob } from "@/lib/contracts";
 
-const stages = [
-  ["queued", "Queued", "Waiting for the local generation worker."],
-  ["extracting", "Extracting", "Reading selected PDF and slide-deck content."],
-  ["retrieving_memory", "Connecting memory", "Looking up relevant material in this subject."],
-  ["generating", "Generating", "Requesting question candidates from the study engine."],
-  ["validating", "Validating", "Checking card structure before saving anything."],
-  ["saving", "Saving", "Writing a complete deck and its cards to the library."],
-  ["complete", "Ready", "Deck generation is complete."],
-] as const;
+const traces = {
+  deck: [
+    ["queued", "Queued", "Waiting for the local generation worker."],
+    ["extracting", "Extracting", "Reading selected PDF and slide-deck content."],
+    ["retrieving_memory", "Connecting memory", "Looking up relevant material in this subject."],
+    ["generating", "Generating", "Requesting question candidates from the study engine."],
+    ["validating", "Validating", "Checking card structure before saving anything."],
+    ["saving", "Saving", "Writing a complete deck and its cards to the library."],
+    ["complete", "Ready", "Deck generation is complete."],
+  ],
+  note: [
+    ["queued", "Queued", "Waiting for the local generation worker."],
+    ["extracting", "Extracting", "Reading selected PDF and slide-deck content."],
+    ["retrieving_memory", "Connecting memory", "Looking up relevant material in this subject."],
+    ["generating", "Drafting", "Building structured study-note sections."],
+    ["validating", "Validating", "Checking every section before saving anything."],
+    ["saving", "Saving", "Writing the printable notes to the notes library."],
+    ["complete", "Ready", "Generated notes are ready to review or print."],
+  ],
+} as const;
 
 type Props = {
-  job: GenerationJob | null;
+  job: GenerationJob | NoteJob | null;
   modules: ModuleItem[];
   selectedModuleIds: string[];
-  totalQuestions: number;
+  totalQuestions?: number;
+  variant?: "deck" | "note";
 };
 
-export function GenerationTrace({ job, modules, selectedModuleIds, totalQuestions }: Props) {
+export function GenerationTrace({
+  job,
+  modules,
+  selectedModuleIds,
+  totalQuestions = 0,
+  variant = "deck",
+}: Props) {
+  const stages = traces[variant];
   const reducedMotion = useReducedMotion();
   const activeIndex = job ? stages.findIndex(([stage]) => stage === job.stage) : -1;
   const selected = modules.filter((module) => selectedModuleIds.includes(module.id));
   const detail =
-    job?.stage === "validating" && job.cardsValid > 0
+    job?.stage === "validating" && "cardsValid" in job && job.cardsValid > 0
       ? `Validating ${job.cardsValid} of ${totalQuestions} cards`
       : job?.message;
   return (

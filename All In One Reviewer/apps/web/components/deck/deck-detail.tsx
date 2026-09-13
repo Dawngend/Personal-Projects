@@ -73,6 +73,13 @@ export function DeckDetail({ deckId }: { deckId: number }) {
       </main>
     );
   const data = deck.data;
+  const notesHref = data.moduleRefs?.length
+    ? `/notes/new?${new URLSearchParams({
+        moduleIds: data.moduleRefs.map((module) => module.id).join(","),
+        subject: data.subject,
+        title: `${data.name} Notes`,
+      }).toString()}`
+    : null;
   return (
     <main className={styles.page}>
       <header className={styles.header}>
@@ -124,12 +131,16 @@ export function DeckDetail({ deckId }: { deckId: number }) {
       <div className={styles.grid}>
         <section>
           <p className="eyebrow">Source modules</p>
+          {notesHref && (
+            <Link href={notesHref} className={styles.notesLink}>
+              Generate notes from these modules →
+            </Link>
+          )}
           <ul className={styles.modules}>
             {data.moduleRefs?.length
               ? data.moduleRefs.map((module) => (
                   <li key={module.id}>
-                    {module.filename}
-                    {" "}
+                    {module.filename}{" "}
                     <Link href={`/modules/${module.id}/reviewer`} className="module-reviewer-link">
                       Open reviewer →
                     </Link>
