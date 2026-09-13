@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { MathPrompt } from "@/components/study/math-prompt";
+import { MathText } from "./math-text";
 import styles from "./note-detail.module.css";
 
 export function NoteDetailView({ noteId }: { noteId: number }) {
@@ -57,7 +57,9 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
       <article className={styles.document}>
         <header className={styles.titleBlock}>
           <p className={styles.subject}>{data.subject} · generated notes</p>
-          <h1>{data.title}</h1>
+          <h1>
+            <MathText>{data.title}</MathText>
+          </h1>
           <p>
             Built from {data.moduleIds.length} source module{data.moduleIds.length === 1 ? "" : "s"}
             . Updated {data.updatedAt.slice(0, 10)}.
@@ -67,9 +69,11 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
         {data.content.sections.map((section, index) => (
           <section className={styles.section} key={`${section.heading}-${index}`}>
             <p className={styles.sectionNumber}>Section {String(index + 1).padStart(2, "0")}</p>
-            <h2>{section.heading}</h2>
+            <h2>
+              <MathText>{section.heading}</MathText>
+            </h2>
             <div className={styles.summary}>
-              <MathPrompt>{section.summary}</MathPrompt>
+              <MathText>{section.summary}</MathText>
             </div>
             {section.keyTerms.length > 0 && (
               <div className={styles.block}>
@@ -77,8 +81,12 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
                 <dl className={styles.definitionGrid}>
                   {section.keyTerms.map((item) => (
                     <div key={item.term}>
-                      <dt>{item.term}</dt>
-                      <dd>{item.definition}</dd>
+                      <dt>
+                        <MathText>{item.term}</MathText>
+                      </dt>
+                      <dd>
+                        <MathText>{item.definition}</MathText>
+                      </dd>
                     </div>
                   ))}
                 </dl>
@@ -89,8 +97,10 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
                 <h3>Properties and principles</h3>
                 {section.properties.map((item) => (
                   <div key={item.name}>
-                    <strong>{item.name}</strong>
-                    <MathPrompt>{item.statement}</MathPrompt>
+                    <strong>
+                      <MathText>{item.name}</MathText>
+                    </strong>
+                    <MathText>{item.statement}</MathText>
                   </div>
                 ))}
               </div>
@@ -104,17 +114,17 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
                     key={`${example.problem}-${exampleIndex}`}
                   >
                     <p className={styles.exampleLabel}>Example {exampleIndex + 1}</p>
-                    <MathPrompt>{example.problem}</MathPrompt>
+                    <MathText>{example.problem}</MathText>
                     <ol>
                       {example.steps.map((step, stepIndex) => (
                         <li key={`${step}-${stepIndex}`}>
-                          <MathPrompt>{step}</MathPrompt>
+                          <MathText>{step}</MathText>
                         </li>
                       ))}
                     </ol>
                     <div className={styles.answer}>
                       <strong>Answer</strong>
-                      <MathPrompt>{example.answer}</MathPrompt>
+                      <MathText>{example.answer}</MathText>
                     </div>
                   </article>
                 ))}
@@ -125,7 +135,9 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
                 <h3>Common mistakes</h3>
                 <ul>
                   {section.commonMistakes.map((mistake) => (
-                    <li key={mistake}>{mistake}</li>
+                    <li key={mistake}>
+                      <MathText>{mistake}</MathText>
+                    </li>
                   ))}
                 </ul>
               </aside>
@@ -143,9 +155,13 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
             <div className={styles.formulaTable}>
               {data.content.formulaSheet.map((formula) => (
                 <div className={styles.formulaRow} key={formula.name}>
-                  <strong>{formula.name}</strong>
-                  <MathPrompt>{formula.expression}</MathPrompt>
-                  <span>{formula.whenToUse}</span>
+                  <strong>
+                    <MathText>{formula.name}</MathText>
+                  </strong>
+                  <MathText mathOnly>{formula.expression}</MathText>
+                  <span>
+                    <MathText>{formula.whenToUse}</MathText>
+                  </span>
                 </div>
               ))}
             </div>
@@ -159,8 +175,12 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
             <ol>
               {data.content.selfCheck.map((item) => (
                 <li key={item.question}>
-                  <strong>{item.question}</strong>
-                  <p>{item.answer}</p>
+                  <strong>
+                    <MathText>{item.question}</MathText>
+                  </strong>
+                  <p>
+                    <MathText>{item.answer}</MathText>
+                  </p>
                 </li>
               ))}
             </ol>
