@@ -35,6 +35,8 @@ from .persistence import ApiRepository, ChatMessageRow, StoredModule
 from .schemas import (
     ChatAction,
     ChatMessage,
+    Comparison,
+    CramItem,
     DeckDetail,
     DeckReference,
     DeckSummary,
@@ -43,6 +45,7 @@ from .schemas import (
     GenerationRequest,
     GradeResult,
     ModuleItem,
+    MemoryAid,
     ModuleRef,
     MultipleChoiceCard,
     NoteContent,
@@ -89,11 +92,25 @@ def safe_card(card: Card) -> QuizCard:
     raise HTTPException(status_code=500, detail={"code": "unsupported_card", "message": "Stored card type is unsupported"})
 
 
+def _valid_items(raw: object, model: type) -> list:
+    """Keep only the independently valid items of an optional list; a bad item never costs its section."""
+    if not isinstance(raw, list):
+        return []
+    kept = []
+    for item in raw:
+        try:
+            kept.append(model.model_validate(item))
+        except ValidationError:
+            continue
+    return kept
+
+
 def validate_generated_note(payloads: list[dict]) -> tuple[NoteContent, int, int]:
     """Retain independently valid structured note items from provider output."""
     sections: list[NoteSection] = []
     formulas: list[Formula] = []
     self_checks: list[SelfCheck] = []
+    cram: list[CramItem] = []
     sections_received = 0
     for payload in payloads:
         if not isinstance(payload, dict):
@@ -109,10 +126,17 @@ def validate_generated_note(payloads: list[dict]) -> tuple[NoteContent, int, int
             continue
         sections_received += len(raw_sections)
         for section in raw_sections:
+            if isinstance(section, dict):
+                section = {
+                    **section,
+                    "memory_aids": [m.model_dump() for m in _valid_items(section.get("memory_aids"), MemoryAid)],
+                    "comparisons": [c.model_dump() for c in _valid_items(section.get("comparisons"), Comparison)],
+                }
             try:
                 sections.append(NoteSection.model_validate(section))
             except ValidationError:
                 continue
+        cram.extend(_valid_items(payload.get("cram_sheet"), CramItem))
         for formula in raw_formulas:
             try:
                 formulas.append(Formula.model_validate(formula))
@@ -123,7 +147,7 @@ def validate_generated_note(payloads: list[dict]) -> tuple[NoteContent, int, int
                 self_checks.append(SelfCheck.model_validate(self_check))
             except ValidationError:
                 continue
-    content = NoteContent(sections=sections, formula_sheet=formulas, self_check=self_checks)
+    content = NoteContent(sections=sections, formula_sheet=formulas, self_check=self_checks, cram_sheet=cram)
     return content, sections_received, len(sections)
 
 

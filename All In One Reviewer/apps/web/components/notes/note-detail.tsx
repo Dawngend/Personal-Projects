@@ -75,6 +75,53 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
             <div className={styles.summary}>
               <MathText>{section.summary}</MathText>
             </div>
+            {section.memoryAids.length > 0 && (
+              <div className={styles.memoryAids}>
+                {section.memoryAids.map((aid, aidIndex) => (
+                  <aside className={styles.memoryAid} key={`${aid.label}-${aidIndex}`}>
+                    <p className={styles.memoryLabel}>Memory aid · {aid.label}</p>
+                    <div className={styles.memoryText}>
+                      <MathText>{aid.text}</MathText>
+                    </div>
+                  </aside>
+                ))}
+              </div>
+            )}
+            {section.comparisons.map((comparison, comparisonIndex) => (
+              <div className={styles.block} key={`${comparison.title}-${comparisonIndex}`}>
+                <h3>{comparison.title}</h3>
+                <div className={styles.tableScroll}>
+                  <table className={styles.comparisonTable}>
+                    <thead>
+                      <tr>
+                        {comparison.columns.map((column, columnIndex) => (
+                          <th scope="col" key={`${column}-${columnIndex}`}>
+                            <MathText>{column}</MathText>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparison.rows.map((row, rowIndex) => (
+                        <tr key={`${row[0]}-${rowIndex}`}>
+                          {row.map((cell, cellIndex) =>
+                            cellIndex === 0 ? (
+                              <th scope="row" key={cellIndex}>
+                                <MathText>{cell}</MathText>
+                              </th>
+                            ) : (
+                              <td key={cellIndex}>
+                                <MathText>{cell}</MathText>
+                              </td>
+                            ),
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
             {section.keyTerms.length > 0 && (
               <div className={styles.block}>
                 <h3>Key terms</h3>
@@ -147,6 +194,25 @@ export function NoteDetailView({ noteId }: { noteId: number }) {
             )}
           </section>
         ))}
+
+        {data.content.cramSheet.length > 0 && (
+          <section className={`${styles.section} ${styles.cramSheet}`}>
+            <p className={styles.sectionNumber}>Last look</p>
+            <h2>Cram sheet</h2>
+            <dl className={styles.definitionGrid}>
+              {data.content.cramSheet.map((item, itemIndex) => (
+                <div key={`${item.topic}-${itemIndex}`}>
+                  <dt>
+                    <MathText>{item.topic}</MathText>
+                  </dt>
+                  <dd>
+                    <MathText>{item.remember}</MathText>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        )}
 
         {data.content.formulaSheet.length > 0 && (
           <section className={styles.section}>

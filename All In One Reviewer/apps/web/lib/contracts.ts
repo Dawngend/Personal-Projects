@@ -95,6 +95,11 @@ const NotePropertySchema = z.object({ name: z.string(), statement: z.string() })
 const WorkedExampleSchema = z
   .object({ problem: z.string(), steps: z.array(z.string()), answer: z.string() })
   .strict();
+const MemoryAidSchema = z.object({ label: z.string(), text: z.string() }).strict();
+const ComparisonSchema = z
+  .object({ title: z.string(), columns: z.array(z.string()), rows: z.array(z.array(z.string())) })
+  .strict();
+const CramItemSchema = z.object({ topic: z.string(), remember: z.string() }).strict();
 const NoteSectionSchema = z
   .object({
     heading: z.string(),
@@ -104,6 +109,9 @@ const NoteSectionSchema = z
     workedExamples: z.array(WorkedExampleSchema),
     commonMistakes: z.array(z.string()),
     sourceRefs: z.array(z.string()),
+    // Defaults keep a response from an API that predates reviewer-style notes parseable.
+    memoryAids: z.array(MemoryAidSchema).default([]),
+    comparisons: z.array(ComparisonSchema).default([]),
   })
   .strict();
 const FormulaSchema = z
@@ -116,6 +124,7 @@ export const NoteContentSchema = z
     sections: z.array(NoteSectionSchema),
     formulaSheet: z.array(FormulaSchema),
     selfCheck: z.array(SelfCheckSchema),
+    cramSheet: z.array(CramItemSchema).default([]),
   })
   .strict();
 export type NoteContent = z.infer<typeof NoteContentSchema>;

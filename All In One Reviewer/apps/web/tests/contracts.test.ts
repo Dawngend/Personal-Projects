@@ -85,6 +85,52 @@ describe("Phase 2 API client contract", () => {
     ).toBe("Vector spaces");
   });
 
+  it("accepts reviewer-style notes and defaults the new fields for older notes", () => {
+    const section = {
+      heading: "HTTP status codes",
+      summary: "Codes tell the client what happened.",
+      keyTerms: [],
+      properties: [],
+      workedExamples: [],
+      commonMistakes: [],
+      sourceRefs: [],
+    };
+    const base = {
+      id: 2,
+      title: "DevNet notes",
+      subject: "Network and Communications 2",
+      moduleIds: [],
+      createdAt: "2026-10-01 10:00:00",
+      updatedAt: "2026-10-01 10:00:00",
+    };
+    const rich = NoteDetailSchema.parse({
+      ...base,
+      content: {
+        sections: [
+          {
+            ...section,
+            memoryAids: [{ label: "401 vs 403", text: "401 asks who you are." }],
+            comparisons: [
+              { title: "401 vs 403", columns: ["Code", "Meaning"], rows: [["401", "Who are you"]] },
+            ],
+          },
+        ],
+        formulaSheet: [],
+        selfCheck: [],
+        cramSheet: [{ topic: "REST", remember: "Six constraints" }],
+      },
+    });
+    expect(rich.content.sections[0].comparisons[0].rows[0][1]).toBe("Who are you");
+    expect(rich.content.cramSheet[0].topic).toBe("REST");
+
+    const legacy = NoteDetailSchema.parse({
+      ...base,
+      content: { sections: [section], formulaSheet: [], selfCheck: [] },
+    });
+    expect(legacy.content.sections[0].memoryAids).toEqual([]);
+    expect(legacy.content.cramSheet).toEqual([]);
+  });
+
   it("validates deck detail and session payloads without accepting answer keys ahead of grading", () => {
     const card = { id: 7, type: "enumeration", question: "List axioms", expectedCount: 3 };
     expect(

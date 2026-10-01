@@ -159,5 +159,64 @@ class GeneratedNotesTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/notes").json(), [])
 
 
+class ReviewerStyleNotesTests(unittest.TestCase):
+    """Memory aids, comparison tables, and the cram sheet added for reviewer-style notes."""
+
+    SECTION = {
+        **VALID_SECTION,
+        "memory_aids": [
+            {"label": "DSDM phases", "text": "Pam Finds Big Fat Dogs In Parks."},
+            {"label": "", "text": "an empty label is invalid"},
+        ],
+        "comparisons": [
+            {"title": "401 vs 403", "columns": ["Code", "Meaning"], "rows": [["401", "Who are you"], ["403", "No"]]},
+            {"title": "ragged", "columns": ["A", "B"], "rows": [["only one cell"]]},
+            {"title": "one column", "columns": ["A"], "rows": [["x"]]},
+        ],
+    }
+
+    def test_bad_memory_aids_and_comparisons_never_cost_the_section(self) -> None:
+        payload = {
+            "sections": [self.SECTION],
+            "formula_sheet": [],
+            "self_check": [],
+            "cram_sheet": [{"topic": "SDLC", "remember": "Six phases"}, {"topic": "", "remember": "bad"}],
+        }
+        content, received, valid = validate_generated_note([payload])
+        self.assertEqual((received, valid), (1, 1))
+        section = content.sections[0]
+        self.assertEqual([m.label for m in section.memory_aids], ["DSDM phases"])
+        self.assertEqual([c.title for c in section.comparisons], ["401 vs 403"])
+        self.assertEqual([c.topic for c in content.cram_sheet], ["SDLC"])
+
+    def test_notes_without_the_new_fields_still_validate(self) -> None:
+        content, _, valid = validate_generated_note(
+            [{"sections": [VALID_SECTION], "formula_sheet": [], "self_check": []}]
+        )
+        self.assertEqual(valid, 1)
+        self.assertEqual(content.sections[0].memory_aids, [])
+        self.assertEqual(content.cram_sheet, [])
+        stored_shape = content.model_dump(mode="json")
+        self.assertIn("cram_sheet", stored_shape)
+
+    def test_old_stored_note_json_loads_with_defaults(self) -> None:
+        from andyhub_api.schemas import NoteContent
+
+        legacy = {
+            "sections": [VALID_SECTION],
+            "formula_sheet": [],
+            "self_check": [],
+        }
+        loaded = NoteContent.model_validate(legacy)
+        self.assertEqual(loaded.sections[0].comparisons, [])
+
+    def test_prompt_asks_for_reviewer_style_output(self) -> None:
+        from generator import get_andy_note_prompt
+
+        prompt = get_andy_note_prompt("standard", ["a.pdf"])
+        for needle in ("memory_aids", "comparisons", "cram_sheet", "plain language"):
+            self.assertIn(needle, prompt)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -105,6 +105,68 @@
   padding: 3px 0 3px 18px;
   font-size: 1.05rem;
   line-height: 1.6;
+  white-space: pre-line;
+}
+.memoryAids {
+  display: grid;
+  gap: 10px;
+  margin-top: 24px;
+}
+.memoryAid {
+  border: 1px solid var(--orchid-ink);
+  border-left-width: 5px;
+  background: rgba(115, 84, 168, 0.08);
+  padding: 14px 18px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.memoryLabel {
+  margin: 0 0 6px;
+  color: var(--orchid-ink);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.memoryText {
+  line-height: 1.55;
+  white-space: pre-line;
+}
+.tableScroll {
+  overflow-x: auto;
+}
+.comparisonTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+.comparisonTable th,
+.comparisonTable td {
+  border: 1px solid var(--mist-line);
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.comparisonTable .mathText {
+  overflow-wrap: break-word;
+}
+.comparisonTable thead th {
+  background: rgba(115, 84, 168, 0.1);
+  color: var(--orchid-ink);
+}
+.comparisonTable tbody th {
+  font-weight: 700;
+}
+.comparisonTable tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.cramSheet {
+  break-before: page;
+  page-break-before: always;
 }
 .block,
 .theorem,
@@ -351,9 +413,15 @@
     min-width: 0;
   }
   .answer,
-  .mistakes {
+  .mistakes,
+  .memoryAid {
     background: #fff;
     border: 1px solid #000;
+  }
+  .comparisonTable th,
+  .comparisonTable td {
+    border-color: #000;
+    background: #fff;
   }
   .section {
     padding-top: 28pt;

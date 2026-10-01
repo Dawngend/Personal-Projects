@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 QuestionStyle = Literal["multiple_choice", "enumeration", "problem", "mixed"]
@@ -139,6 +139,32 @@ class WorkedExample(ApiModel):
     answer: str = Field(min_length=1)
 
 
+class MemoryAid(ApiModel):
+    """A mnemonic or chunking trick for one acronym, list, or number set. Written by Andy, not the source."""
+
+    label: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+
+
+class Comparison(ApiModel):
+    """A side-by-side table for concepts students confuse (for example 401 vs 403)."""
+
+    title: str = Field(min_length=1)
+    columns: list[str] = Field(min_length=2)
+    rows: list[list[str]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _rows_match_columns(self) -> "Comparison":
+        if any(len(row) != len(self.columns) for row in self.rows):
+            raise ValueError("every comparison row must have one cell per column")
+        return self
+
+
+class CramItem(ApiModel):
+    topic: str = Field(min_length=1)
+    remember: str = Field(min_length=1)
+
+
 class NoteSection(ApiModel):
     heading: str = Field(min_length=1)
     summary: str = Field(min_length=1)
@@ -147,6 +173,9 @@ class NoteSection(ApiModel):
     worked_examples: list[WorkedExample]
     common_mistakes: list[str]
     source_refs: list[str]
+    # Added for reviewer-style notes; defaults keep every previously stored note valid.
+    memory_aids: list[MemoryAid] = Field(default_factory=list)
+    comparisons: list[Comparison] = Field(default_factory=list)
 
 
 class Formula(ApiModel):
@@ -164,6 +193,7 @@ class NoteContent(ApiModel):
     sections: list[NoteSection] = Field(min_length=1)
     formula_sheet: list[Formula]
     self_check: list[SelfCheck]
+    cram_sheet: list[CramItem] = Field(default_factory=list)
 
 
 class NoteSummary(ApiModel):
