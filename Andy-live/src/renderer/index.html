@@ -19,6 +19,7 @@
             <div class="actions">
                 <button id="debugBtn" class="btn-sm hidden" type="button">🛠️ Generate debug prompt</button>
                 <button id="deepPromptBtn" class="btn-sm hidden" type="button">🧠 Deep prompt</button>
+                <button id="practiceBtn" class="btn-sm" type="button" aria-pressed="false">Practice</button>
                 <button id="historyBtn" class="btn-sm">📝 History</button>
                 <button id="setupBtn" class="btn-sm">⚙️ Setup JD</button>
             </div>
@@ -37,6 +38,7 @@
                 </select>
 
                 <div class="modal-actions">
+                    <button id="skipSetupBtn" class="btn-sm" type="button">Skip setup</button>
                     <button id="saveSetupBtn" class="btn-primary">Initialize AI Teleprompter</button>
                 </div>
             </div>
@@ -58,6 +60,7 @@
             </div>
         </div>
 
+        <div id="liveView" class="view">
         <!-- Teleprompter Display Box -->
         <main class="hud-body">
             <div id="modelStatus" class="model-status">
@@ -83,8 +86,54 @@
             <span id="imageAttachmentName"></span>
             <button id="clearImageBtn" type="button" aria-label="Remove screenshot attachment">×</button>
         </div>
+        </div>
+
+        <!-- Practice mode: mock interview rehearsal -->
+        <section id="practiceView" class="view practice-view hidden">
+            <div class="practice-row">
+                <select id="practiceRole" aria-label="Role">
+                    <option value="mle">ML / AI Engineer</option>
+                    <option value="backend">Backend Systems</option>
+                    <option value="ds">Data Scientist</option>
+                </select>
+                <select id="practiceTopic" aria-label="Topic">
+                    <option value="stats">Stats</option>
+                    <option value="ml">ML</option>
+                    <option value="llm">LLM</option>
+                    <option value="behavioral">Behavioral</option>
+                </select>
+                <button id="practiceNextBtn" class="btn-sm" type="button">New question</button>
+                <span id="practiceTimer" class="practice-timer">0:00 / 2:00</span>
+            </div>
+
+            <p id="practiceQuestion" class="practice-question"></p>
+            <div class="practice-row">
+                <button id="practiceSpeakBtn" class="btn-sm" type="button">Speak question</button>
+                <button id="practiceRecordBtn" class="btn-sm" type="button">Hold to record</button>
+                <span id="practiceMicLive" class="mic-live hidden">Mic live</span>
+            </div>
+
+            <textarea id="practiceAnswer" class="practice-answer" placeholder="Type your answer, or hold the record button and speak..."></textarea>
+            <p id="practiceMessage" class="practice-message hidden" role="alert"></p>
+            <div class="practice-row">
+                <button id="practiceFeedbackBtn" class="btn-primary" type="button">Get feedback</button>
+            </div>
+
+            <div id="practiceFeedback" class="practice-feedback hidden"></div>
+            <button id="practiceFollowUpBtn" class="btn-sm hidden" type="button">Ask the follow-up</button>
+
+            <div id="practiceSummary" class="practice-feedback hidden"></div>
+            <div class="practice-row">
+                <button id="practiceCopyBtn" class="btn-sm" type="button" disabled>Copy summary as Markdown</button>
+            </div>
+        </section>
     </div>
 
+    <script src="../practice/questions.js"></script>
+    <script src="../practice/select.js"></script>
+    <script src="../practice/summary.js"></script>
+    <script src="../practice/recorder.js"></script>
+    <script src="practice.js"></script>
     <script src="app.js"></script>
 </body>
 </html>

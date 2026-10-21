@@ -12,5 +12,9 @@ contextBridge.exposeInMainWorld('api', {
     generateDebugPrompt: (errorMessage, context) => ipcRenderer.invoke('generate-debug-prompt', { errorMessage, context }),
     generateDeepPrompt: (question, context) => ipcRenderer.invoke('generate-deep-prompt', { question, context }),
     onModelResponse: (callback) => ipcRenderer.on('model-response', (event, data) => callback(data)),
-    onRoleChanged: (callback) => ipcRenderer.on('role-changed', (event, data) => callback(data))
+    onRoleChanged: (callback) => ipcRenderer.on('role-changed', (event, data) => callback(data)),
+    practice: {
+        transcribe: (arrayBuffer) => ipcRenderer.invoke('practice:transcribe', arrayBuffer),
+        feedback: (input) => ipcRenderer.invoke('practice:feedback', input)
+    }
 });

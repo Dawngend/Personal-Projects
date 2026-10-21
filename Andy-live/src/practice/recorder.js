@@ -1,4 +1,4 @@
-const api = {
+const recorderApi = {
     stopRecording(state, ui) {
         if (state.recorder && state.recorder.state === 'recording') state.recorder.stop();
         if (state.stream) {
@@ -10,4 +10,4 @@ const api = {
     }
 };
 
-if (typeof module !== 'undefined') module.exports = api; else window.PracticeRecorder = api;
+if (typeof module !== 'undefined') module.exports = recorderApi; else window.PracticeRecorder = recorderApi;

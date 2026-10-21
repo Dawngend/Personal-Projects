@@ -30,6 +30,7 @@
    - Classifies query intent in ~5ms.
    - Direct Groq LPU integration via `console.groq.com` API keys.
    - Hard output token caps (150–500 tokens) for short 1–3 line teleprompter hints.
+   - Practice mode (`src/practice/`, `src/renderer/practice.js`) deliberately bypasses `smartRouter`: `main.js` calls Groq directly through `src/practice/service.js` and caps feedback at 700 tokens.
 
 3. **Electron HUD Overlay (`src/main.js`, `src/renderer/`)**:
    - Frameless, transparent, always-on-top, click-through overlay window.

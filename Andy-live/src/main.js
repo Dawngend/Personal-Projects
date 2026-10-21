@@ -1,10 +1,14 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, dialog, clipboard, session: electronSession } = require('electron');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
+const { toFile } = require('groq-sdk');
+
 const SmartAIRouter = require('./utils/smartRouter');
 const { getAvailableResumes, buildPersonalizedPrompt } = require('./utils/jdMatcher');
+const { transcribeAnswer, requestFeedback } = require('./practice/service');
+const { isAllowedRequest, isAllowedCheck } = require('./practice/permissions');
 
 let mainWindow = null;
 const router = new SmartAIRouter();
@@ -166,7 +170,26 @@ ipcMain.handle('generate-deep-prompt', async (event, { question, context }) => {
     }
 });
 
-app.whenReady().then(createWindow);
+ipcMain.handle('practice:transcribe', async (event, audio) => {
+    return transcribeAnswer({ groq: router.groq, toFile, audio });
+});
+
+ipcMain.handle('practice:feedback', async (event, { role, topic, question, answer }) => {
+    return requestFeedback({
+        groq: router.groq,
+        role: String(role || ''),
+        topic: String(topic || ''),
+        question: String(question || '').slice(0, 2000),
+        answer: String(answer || '').slice(0, 12000)
+    });
+});
+
+app.whenReady().then(() => {
+    // Practice mode may use the microphone only; every other permission stays denied.
+    electronSession.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => callback(isAllowedRequest(permission, details)));
+    electronSession.defaultSession.setPermissionCheckHandler((wc, permission, origin, details) => isAllowedCheck(permission, details));
+    createWindow();
+});
 
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();

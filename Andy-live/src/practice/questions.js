@@ -1,4 +1,4 @@
-const api = [
+const questionBank = [
     { id: 'stats-01', topic: 'stats', text: 'How can data leakage enter a training and test split?', roles: ['mle', 'ds'] },
     { id: 'stats-02', topic: 'stats', text: 'When would you use a paired bootstrap to compare two models?', roles: ['mle', 'ds'] },
     { id: 'stats-03', topic: 'stats', text: 'Explain a permutation test for a difference in conversion rates.', roles: ['ds'] },
@@ -52,4 +52,4 @@ const api = [
     { id: 'behavioral-12', topic: 'behavioral', text: 'Tell a STAR story about collaborating across teams to deliver a project.', roles: ['mle', 'ds', 'backend'] }
 ];
 
-if (typeof module !== 'undefined') module.exports = api; else window.PracticeQuestions = api;
+if (typeof module !== 'undefined') module.exports = questionBank; else window.PracticeQuestions = questionBank;

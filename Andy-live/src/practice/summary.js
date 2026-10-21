@@ -1,6 +1,6 @@
 const items = ['structure', 'terms', 'correctness', 'calculations'];
 
-const api = {
+const summaryApi = {
     summarize(results) {
         const scored = results.filter(result => result && result.scores);
         if (scored.length === 0) return { averages: {}, habits: [] };
@@ -25,4 +25,4 @@ const api = {
     }
 };
 
-if (typeof module !== 'undefined') module.exports = api; else window.PracticeSummary = api;
+if (typeof module !== 'undefined') module.exports = summaryApi; else window.PracticeSummary = summaryApi;

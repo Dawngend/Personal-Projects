@@ -320,3 +320,120 @@ body {
 .btn-primary:hover {
     background: #4f46e5;
 }
+
+.btn-primary:disabled,
+.btn-sm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Practice mode */
+.view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.practice-view {
+    padding: 14px;
+    gap: 10px;
+    overflow-y: auto;
+}
+
+.practice-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.practice-view select,
+.practice-answer {
+    background: #0f172a;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    padding: 6px;
+}
+
+.practice-answer {
+    min-height: 90px;
+    resize: vertical;
+    user-select: text;
+}
+
+.practice-question {
+    font-size: 15px;
+    line-height: 1.5;
+    color: #f8fafc;
+}
+
+.practice-timer {
+    margin-left: auto;
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+.practice-timer.over-target {
+    color: #fca5a5;
+}
+
+.mic-live {
+    color: #fca5a5;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.mic-live::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: #ef4444;
+}
+
+#practiceRecordBtn {
+    touch-action: none;
+}
+
+#practiceRecordBtn.recording {
+    background: rgba(239, 68, 68, 0.3);
+    border-color: #ef4444;
+}
+
+.practice-message {
+    font-size: 12px;
+    color: #93c5fd;
+}
+
+.practice-message.error-text {
+    color: #fca5a5;
+}
+
+.practice-feedback {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.72);
+    font-size: 12px;
+    line-height: 1.5;
+    user-select: text;
+}
+
+.practice-feedback h3 {
+    font-size: 12px;
+    color: #93c5fd;
+    margin-top: 6px;
+}
+
+.practice-feedback ul {
+    padding-left: 18px;
+}
+
+.practice-scores {
+    font-weight: 600;
+    color: #fcd34d;
+}

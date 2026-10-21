@@ -1,4 +1,4 @@
-const api = {
+const selectApi = {
     pickQuestion(bank, role, topic, usedIds, pick) {
         const matches = bank.filter(question => question.topic === topic && question.roles.includes(role));
         if (matches.length === 0) return null;
@@ -9,4 +9,4 @@ const api = {
     }
 };
 
-if (typeof module !== 'undefined') module.exports = api; else window.PracticeSelect = api;
+if (typeof module !== 'undefined') module.exports = selectApi; else window.PracticeSelect = selectApi;

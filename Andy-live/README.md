@@ -46,6 +46,12 @@ Copy `.env.example` to `.env` and configure `GROQ_API_KEY`.
 
 If a request fails, Andy Live can generate a sanitized, ready-to-paste debug prompt for Codex or Claude Code. It never writes API keys or resume content to disk.
 
+## Practice mode
+
+Choose **Practice** in the header (or **Skip setup** on the launch screen first) to rehearse mock interview questions. Pick a role and topic, read or hear the question, then type an answer or hold **Hold to record** and speak. The microphone runs only while the button is held, a **Mic live** indicator shows while it runs, and nothing is written to disk. Audio goes to Groq for transcription only after you release the button; there is no screen capture and no other people's audio. **Get feedback** returns scores, strengths, fixes, a tighter answer and a follow-up question, and the session summary can be copied as Markdown. History stays in memory and is discarded when the app closes.
+
+Practice mode talks to Groq directly and deliberately bypasses `smartRouter`. Feedback is capped at 700 tokens.
+
 ## Product boundary
 
 Andy Live is an overt interview-preparation and communication-coaching tool. Future work may add consent-based contextual input, profiles, history, preferences, and keyboard window controls. It will not include concealment, click-through/stealth behavior, proctoring bypasses, or other evasion features.
