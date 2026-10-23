@@ -1,0 +1,4 @@
+// Git internals must never be synced. Syncthing corrupted another repo's .git (found 2026-10-21).
+// Comments in this file use //, not #.
+.git
+(?d)node_modules
