@@ -76,9 +76,11 @@
         <!-- Quick Query Input -->
         <footer class="hud-footer">
             <button id="attachImageBtn" class="btn-sm attach-button" type="button" title="PNG, JPG, or WEBP up to 4 MB">🖼️ Screenshot</button>
+            <button id="listenBtn" class="btn-sm" type="button" title="Hold while your mock interview app asks the question, then let go">🎙️ Hold to listen</button>
+            <span id="listenMicLive" class="mic-live hidden">Mic live</span>
             <input type="text" id="queryInput" placeholder="Ask question / past question (Press Enter)..." />
             <select id="forcedProviderSelect" class="provider-picker">
-                <option value="">⚡ Auto Router</option>
+                <option value="">⚡ Claude (your login)</option>
                 <option value="groq">Groq (gpt-oss-20b)</option>
             </select>
         </footer>

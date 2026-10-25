@@ -52,6 +52,19 @@ Choose **Practice** in the header (or **Skip setup** on the launch screen first)
 
 Practice mode talks to Groq directly and deliberately bypasses `smartRouter`. Feedback is capped at 700 tokens.
 
+## Listening to a mock interview
+
+Andy Live can listen to your own mock interview app and suggest what to say, in your own words.
+
+1. Start Andy Live, open **Setup JD**, paste the job description and pick a resume.
+2. Start your mock interview app and let its sound play through the speakers. The mic hears it only that way; with headphones it hears nothing.
+3. Hold **Hold to listen** while the question is asked, then let go. The mic runs only while the button is held and nothing is saved to disk.
+4. The question is transcribed, then Claude suggests an answer. The answer uses your resume, the job description and the way you talk (`Dawn_Writing_Voice.md` in the vault), and it never invents facts.
+
+Typed questions go through the same Claude route. Claude runs through the Claude Code login on this PC, so there is no extra API key (any `ANTHROPIC_API_KEY` is removed for that call). Voice needs `GROQ_API_KEY` in `.env` because Groq's Whisper does the speech-to-text; typed questions do not need it.
+
+Settings: `ANDY_LIVE_MODEL` picks the Claude model (default `sonnet`), `ANDY_LIVE_BRAIN=groq` or the Groq choice in the provider menu goes back to the old Groq answers, and `CLAUDE_CLI_PATH` points at `claude.exe` if it is not on the PATH. Run Setup JD first; without it there is no resume to answer from. This is for rehearsing with your own mock interview app.
+
 ## Product boundary
 
 Andy Live is an overt interview-preparation and communication-coaching tool. Future work may add consent-based contextual input, profiles, history, preferences, and keyboard window controls. It will not include concealment, click-through/stealth behavior, proctoring bypasses, or other evasion features.

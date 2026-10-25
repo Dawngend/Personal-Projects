@@ -395,11 +395,13 @@ body {
     background: #ef4444;
 }
 
-#practiceRecordBtn {
+#practiceRecordBtn,
+#listenBtn {
     touch-action: none;
 }
 
-#practiceRecordBtn.recording {
+#practiceRecordBtn.recording,
+#listenBtn.recording {
     background: rgba(239, 68, 68, 0.3);
     border-color: #ef4444;
 }

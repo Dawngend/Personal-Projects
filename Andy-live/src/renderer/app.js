@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const providerTag = document.getElementById('providerTag');
     const latencyTag = document.getElementById('latencyTag');
     const activeRoleBadge = document.getElementById('activeRoleBadge');
+    const listenBtn = document.getElementById('listenBtn');
+    const listenMicLive = document.getElementById('listenMicLive');
     let selectedImage = null;
     let latestFailure = null;
     let latestQuestion = null;
@@ -194,6 +196,103 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    const showResult = (query, result, imageName) => {
+        const { provider, model, text, latencyMs } = result;
+        providerTag.textContent = `${provider} (${model})`;
+        latencyTag.textContent = `${latencyMs}ms`;
+        responseOutput.textContent = text;
+        if (provider === 'Configuration required' || provider === 'Vision unavailable') {
+            recordFailure(text, { provider, model, role: activeRoleBadge.textContent, query, imageName: imageName || 'none' });
+        } else {
+            clearFailure();
+        }
+        latestQuestion = {
+            query,
+            context: {
+                role: activeRoleBadge.textContent,
+                provider,
+                model,
+                currentHudAnswer: text,
+                screenshot: imageName || 'none'
+            }
+        };
+        deepPromptBtn.classList.remove('hidden');
+        sessionHistory.push({
+            timestamp: new Date().toLocaleTimeString(),
+            role: activeRoleBadge.textContent,
+            provider,
+            model,
+            latencyMs,
+            imageName,
+            query,
+            response: text
+        });
+    };
+
+    // Hold to listen: the mic runs only while the button is held; the sound is sent for transcription on release.
+    const listenState = { recorder: null, stream: null, holding: false };
+    const listenUi = {
+        setMicLive(on) {
+            listenMicLive.classList.toggle('hidden', !on);
+            listenBtn.classList.toggle('recording', on);
+        }
+    };
+
+    const stopListening = () => {
+        listenState.holding = false;
+        PracticeRecorder.stopRecording(listenState, listenUi);
+    };
+
+    const answerHeardQuestion = async blob => {
+        setResponse('Listening to the question, then thinking…', 'placeholder-text');
+        providerTag.textContent = 'Thinking...';
+        latencyTag.textContent = '';
+        const res = await window.api.listenAnswer(await blob.arrayBuffer());
+        if (res.success) {
+            showResult(res.question, res.result, null);
+        } else {
+            providerTag.textContent = 'Error';
+            setResponse(res.error || 'Could not answer the question.', 'error-text');
+        }
+    };
+
+    const startListening = async () => {
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (error) {
+            listenState.holding = false;
+            setResponse(`Microphone unavailable: ${error.message}`, 'error-text');
+            return;
+        }
+        // The button may have been released while the browser was asking for the mic.
+        if (!listenState.holding || listenState.recorder) {
+            stream.getTracks().forEach(track => track.stop());
+            return;
+        }
+
+        const chunks = [];
+        const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+        recorder.ondataavailable = event => chunks.push(event.data);
+        recorder.onstop = () => {
+            if (chunks.length) answerHeardQuestion(new Blob(chunks, { type: 'audio/webm' }));
+        };
+        listenState.stream = stream;
+        listenState.recorder = recorder;
+        recorder.start();
+        listenUi.setMicLive(true);
+    };
+
+    listenBtn.addEventListener('pointerdown', event => {
+        if (listenState.holding) return;
+        listenState.holding = true;
+        listenBtn.setPointerCapture(event.pointerId);
+        startListening();
+    });
+    listenBtn.addEventListener('pointerup', stopListening);
+    listenBtn.addEventListener('pointercancel', stopListening);
+    window.addEventListener('blur', stopListening);
+
     queryInput.addEventListener('keydown', async (e) => {
         if (e.key === 'Enter') {
             const query = queryInput.value.trim();
@@ -217,36 +316,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             if (res.success && res.result) {
-                const { provider, model, text, latencyMs } = res.result;
-                providerTag.textContent = `${provider} (${model})`;
-                latencyTag.textContent = `${latencyMs}ms`;
-                responseOutput.textContent = text;
-                if (provider === 'Configuration required' || provider === 'Vision unavailable') {
-                    recordFailure(text, { provider, model, role: activeRoleBadge.textContent, query, imageName: imageName || 'none' });
-                } else {
-                    clearFailure();
-                }
-                latestQuestion = {
-                    query,
-                    context: {
-                        role: activeRoleBadge.textContent,
-                        provider,
-                        model,
-                        currentHudAnswer: text,
-                        screenshot: imageName || 'none'
-                    }
-                };
-                deepPromptBtn.classList.remove('hidden');
-                sessionHistory.push({
-                    timestamp: new Date().toLocaleTimeString(),
-                    role: activeRoleBadge.textContent,
-                    provider,
-                    model,
-                    latencyMs,
-                    imageName,
-                    query,
-                    response: text
-                });
+                showResult(query, res.result, imageName);
             } else {
                 providerTag.textContent = 'Error';
                 const error = res.error || 'Failed to generate response';

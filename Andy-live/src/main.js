@@ -9,9 +9,13 @@ const SmartAIRouter = require('./utils/smartRouter');
 const { getAvailableResumes, buildPersonalizedPrompt } = require('./utils/jdMatcher');
 const { transcribeAnswer, requestFeedback } = require('./practice/service');
 const { isAllowedRequest, isAllowedCheck } = require('./practice/permissions');
+const { readVoiceText, answerWithClaude, makeClaudeRunner } = require('./claude');
+const { listenAnswer } = require('./listen');
 
 let mainWindow = null;
 const router = new SmartAIRouter();
+const CLAUDE_MODEL = process.env.ANDY_LIVE_MODEL || 'sonnet';
+const runClaude = makeClaudeRunner({ model: CLAUDE_MODEL });
 const session = { jdText: '', resumePath: '', role: 'default' };
 const selectedImagePaths = new Set();
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -82,10 +86,15 @@ ipcMain.handle('setup-session', async (event, { jdText, resumePath }) => {
     return { success: true, promptSnippet: prompt.substring(0, 300) + '...', configuredProviders: router.getConfiguredProviders() };
 });
 
+function answerWithClaudeRoute(question) {
+    return answerWithClaude({ run: runClaude, sessionPrompt: router.systemPrompt, voiceText: readVoiceText(), question, model: CLAUDE_MODEL });
+}
+
 ipcMain.handle('send-query', async (event, { query, forcedProvider }) => {
     try {
         const allowedProviders = new Set(['', 'groq']);
         const provider = allowedProviders.has(forcedProvider) ? forcedProvider : '';
+        if (provider !== 'groq' && process.env.ANDY_LIVE_BRAIN !== 'groq') return await answerWithClaudeRoute(query);
         const result = await router.routeQuery(String(query || '').slice(0, 12000), null, null, provider);
         return { success: true, result };
     } catch (err) {
@@ -172,6 +181,17 @@ ipcMain.handle('generate-deep-prompt', async (event, { question, context }) => {
 
 ipcMain.handle('practice:transcribe', async (event, audio) => {
     return transcribeAnswer({ groq: router.groq, toFile, audio });
+});
+
+ipcMain.handle('listen:answer', async (event, audio) => {
+    if (!router.groq) {
+        return { success: false, error: 'Add GROQ_API_KEY to .env to use Hold to listen. Typed questions work without it.' };
+    }
+    return listenAnswer({
+        audio,
+        transcribe: heardAudio => transcribeAnswer({ groq: router.groq, toFile, audio: heardAudio }),
+        answer: answerWithClaudeRoute
+    });
 });
 
 ipcMain.handle('practice:feedback', async (event, { role, topic, question, answer }) => {
