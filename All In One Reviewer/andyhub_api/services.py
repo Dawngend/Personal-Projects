@@ -288,23 +288,25 @@ class DeckService:
         if search:
             needle = search.casefold()
             decks = [deck for deck in decks if needle in deck.name.casefold() or needle in deck.subject.casefold()]
-        return [self._summary(deck) for deck in decks[:limit]]
+        counts = self.cards.summary_counts_by_deck()
+        return [self._summary(deck, counts.get(deck.id, {})) for deck in decks[:limit]]
 
     def get(self, deck_id: int, include_cards: bool = False) -> DeckDetail:
         deck = self.decks.get(deck_id)
         if not deck:
             raise _not_found("Deck")
-        summary = self._summary(deck)
+        counts = self.cards.summary_counts_by_deck()
+        summary = self._summary(deck, counts.get(deck.id, {}))
         return DeckDetail(**summary.model_dump(), cards=[safe_card(card) for card in self.cards.list_for_deck(deck.id)] if include_cards else None)
 
-    def _summary(self, deck: Deck) -> DeckSummary:
-        cards = self.cards.list_for_deck(deck.id)
-        counts = {kind: sum(card.card_type == kind for card in cards) for kind in ("multiple_choice", "enumeration", "problem")}
+    def _summary(self, deck: Deck, counts: dict[str, tuple[int, int]]) -> DeckSummary:
+        question_types = {kind: counts.get(kind, (0, 0))[0] for kind in ("multiple_choice", "enumeration", "problem")}
         modules = [item.strip() for item in deck.modules_included.split(",") if item.strip()]
         module_refs = self._module_refs(deck)
         return DeckSummary(
             id=deck.id, name=deck.name, subject=deck.subject, modules=modules, module_refs=module_refs,
-            card_count=len(cards), question_types=counts, total_misses=sum(card.times_missed for card in cards),
+            card_count=sum(count for count, _ in counts.values()), question_types=question_types,
+            total_misses=sum(misses for _, misses in counts.values()),
         )
 
     def _module_refs(self, deck: Deck) -> list[ModuleRef] | None:

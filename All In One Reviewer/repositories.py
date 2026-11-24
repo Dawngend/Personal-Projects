@@ -198,6 +198,18 @@ class CardRepository:
             ).fetchall()
         return [Card(*row) for row in rows]
 
+    def summary_counts_by_deck(self) -> dict[int, dict[str, tuple[int, int]]]:
+        """Return (card count, total misses) by deck and type, including unknown types."""
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT deck_id, type, COUNT(*), SUM(times_missed) "
+                "FROM cards GROUP BY deck_id, type"
+            ).fetchall()
+        counts: dict[int, dict[str, tuple[int, int]]] = {}
+        for deck_id, card_type, card_count, total_misses in rows:
+            counts.setdefault(deck_id, {})[card_type] = (card_count, total_misses)
+        return counts
+
     def get(self, card_id: int) -> Card | None:
         with self._connection() as connection:
             row = connection.execute(
